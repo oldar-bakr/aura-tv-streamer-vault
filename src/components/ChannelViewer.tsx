@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -5,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Search, Play, Grid, List, Loader2, Settings, Globe } from 'lucide-react';
 import { M3ULink, Channel } from '../types/M3ULink';
 import { useToast } from '@/hooks/use-toast';
+import { fetchM3U, ParsedChannel } from '../utils/m3uParser';
 
 interface ChannelViewerProps {
   m3uLinks: M3ULink[];
@@ -38,7 +40,9 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ m3uLinks, onAdminAccess }
       nowPlaying: 'Now playing:',
       adminDashboard: 'Admin Dashboard',
       manageLinks: 'Manage M3U Links',
-      all: 'All'
+      all: 'All',
+      loading: 'Loading channels...',
+      fetchingFrom: 'Fetching from'
     },
     ar: {
       title: 'مدير البث التلفزيوني',
@@ -56,7 +60,9 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ m3uLinks, onAdminAccess }
       nowPlaying: 'الآن يتم تشغيل:',
       adminDashboard: 'لوحة تحكم المشرف',
       manageLinks: 'إدارة روابط M3U',
-      all: 'الكل'
+      all: 'الكل',
+      loading: 'جاري تحميل القنوات...',
+      fetchingFrom: 'جاري التحميل من'
     }
   };
 
@@ -75,10 +81,25 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ m3uLinks, onAdminAccess }
     try {
       const allChannels: Channel[] = [];
       
-      m3uLinks.forEach((link) => {
-        const demoChannels = generateDemoChannels(link.category || 'General');
-        allChannels.push(...demoChannels);
-      });
+      for (const link of m3uLinks) {
+        try {
+          console.log(`${t.fetchingFrom} ${link.name}: ${link.url}`);
+          const parsedChannels = await fetchM3U(link.url);
+          
+          // Convert ParsedChannel to Channel
+          const convertedChannels: Channel[] = parsedChannels.map(pc => ({
+            name: pc.name,
+            url: pc.url,
+            logo: pc.logo,
+            group: pc.group || link.category || 'General'
+          }));
+          
+          allChannels.push(...convertedChannels);
+        } catch (error) {
+          console.error(`Error loading M3U from ${link.name}:`, error);
+          // Continue with other links even if one fails
+        }
+      }
 
       setChannels(allChannels);
       toast({
@@ -86,6 +107,7 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ m3uLinks, onAdminAccess }
         description: `${t.foundChannels} ${allChannels.length} ${t.channels} ${m3uLinks.length} ${t.links}`,
       });
     } catch (error) {
+      console.error('Error loading channels:', error);
       toast({
         title: t.errorLoading,
         description: t.failedParse,
@@ -94,25 +116,6 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ m3uLinks, onAdminAccess }
     } finally {
       setLoading(false);
     }
-  };
-
-  const generateDemoChannels = (category: string): Channel[] => {
-    const baseChannels = [
-      { name: 'News Channel HD', url: 'https://demo.com/news', group: 'News' },
-      { name: 'Sports Network', url: 'https://demo.com/sports', group: 'Sports' },
-      { name: 'Movie Central', url: 'https://demo.com/movies', group: 'Movies' },
-      { name: 'Music TV', url: 'https://demo.com/music', group: 'Music' },
-      { name: 'Documentary HD', url: 'https://demo.com/docs', group: 'Educational' },
-      { name: 'Kids Channel', url: 'https://demo.com/kids', group: 'Kids' },
-      { name: 'Drama Series', url: 'https://demo.com/drama', group: 'Entertainment' },
-      { name: 'Comedy Central', url: 'https://demo.com/comedy', group: 'Entertainment' },
-    ];
-
-    return baseChannels.map((channel, index) => ({
-      ...channel,
-      logo: `https://picsum.photos/64/64?random=${category}-${index}`,
-      group: category === 'General' ? channel.group : category,
-    }));
   };
 
   const filterChannels = () => {
@@ -146,7 +149,7 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ m3uLinks, onAdminAccess }
       <div className="min-h-screen flex items-center justify-center" dir={language === 'ar' ? 'rtl' : 'ltr'}>
         <div className="text-center">
           <Loader2 className="w-12 h-12 text-purple-400 animate-spin mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-white mb-2">{t.channelsLoaded}</h2>
+          <h2 className="text-xl font-semibold text-white mb-2">{t.loading}</h2>
           <p className="text-purple-200">Parsing M3U files...</p>
         </div>
       </div>
@@ -247,12 +250,16 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ m3uLinks, onAdminAccess }
                         src={channel.logo}
                         alt={channel.name}
                         className="w-16 h-16 rounded-lg mx-auto mb-3 object-cover"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                          target.nextElementSibling?.classList.remove('hidden');
+                        }}
                       />
-                    ) : (
-                      <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-violet-600 rounded-lg mx-auto mb-3 flex items-center justify-center">
-                        <Play className="w-6 h-6 text-white" />
-                      </div>
-                    )}
+                    ) : null}
+                    <div className={`w-16 h-16 bg-gradient-to-br from-purple-500 to-violet-600 rounded-lg mx-auto mb-3 flex items-center justify-center ${channel.logo ? 'hidden' : ''}`}>
+                      <Play className="w-6 h-6 text-white" />
+                    </div>
                     <h3 className="font-semibold text-white text-sm truncate">{channel.name}</h3>
                     {channel.group && (
                       <p className="text-xs text-purple-300 mt-1">{channel.group}</p>
@@ -265,12 +272,16 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ m3uLinks, onAdminAccess }
                         src={channel.logo}
                         alt={channel.name}
                         className="w-12 h-12 rounded-lg object-cover"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                          target.nextElementSibling?.classList.remove('hidden');
+                        }}
                       />
-                    ) : (
-                      <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-violet-600 rounded-lg flex items-center justify-center">
-                        <Play className="w-5 h-5 text-white" />
-                      </div>
-                    )}
+                    ) : null}
+                    <div className={`w-12 h-12 bg-gradient-to-br from-purple-500 to-violet-600 rounded-lg flex items-center justify-center ${channel.logo ? 'hidden' : ''}`}>
+                      <Play className="w-5 h-5 text-white" />
+                    </div>
                     <div className="flex-1">
                       <h3 className="font-semibold text-white">{channel.name}</h3>
                       {channel.group && (

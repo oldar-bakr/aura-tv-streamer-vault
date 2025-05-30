@@ -15,10 +15,18 @@ const Index = () => {
     if (savedLinks) {
       setM3uLinks(JSON.parse(savedLinks));
     } else {
-      // Add some demo links if none exist
+      // Add Arabic IPTV link and some demo links if none exist
       const demoLinks: M3ULink[] = [
         {
           id: '1',
+          name: 'Arabic IPTV Channels',
+          url: 'https://iptv-org.github.io/iptv/languages/ara.m3u',
+          category: 'Arabic',
+          description: 'Arabic language TV channels',
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: '2',
           name: 'Entertainment Package',
           url: 'https://demo.com/entertainment.m3u',
           category: 'Entertainment',
@@ -26,19 +34,11 @@ const Index = () => {
           createdAt: new Date().toISOString()
         },
         {
-          id: '2',
+          id: '3',
           name: 'Sports Package',
           url: 'https://demo.com/sports.m3u',
           category: 'Sports',
           description: 'Live Sports Channels',
-          createdAt: new Date().toISOString()
-        },
-        {
-          id: '3',
-          name: 'News Package',
-          url: 'https://demo.com/news.m3u',
-          category: 'News',
-          description: 'International News',
           createdAt: new Date().toISOString()
         }
       ];

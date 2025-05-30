@@ -6,7 +6,7 @@ import { M3ULink } from '../types/M3ULink';
 
 const Index = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentView, setCurrentView<'viewer' | 'dashboard'>('viewer');
+  const [currentView, setCurrentView] = useState<'viewer' | 'dashboard'>('viewer');
   const [m3uLinks, setM3uLinks] = useState<M3ULink[]>([]);
 
   useEffect(() => {

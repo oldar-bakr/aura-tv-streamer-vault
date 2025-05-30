@@ -157,7 +157,7 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ m3uLinks, onAdminAccess }
     <div className="min-h-screen p-6" dir={language === 'ar' ? 'rtl' : 'ltr'}>
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center gap-4">
           <div className="w-16 h-16 bg-white rounded-lg flex items-center justify-center p-2">
             <img 
               src="/lovable-uploads/f5a7e76e-1a14-41df-99e1-340e49412af4.png" 
@@ -170,7 +170,7 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ m3uLinks, onAdminAccess }
             <p className="text-purple-200">{filteredChannels.length} {t.subtitle}</p>
           </div>
         </div>
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center gap-3">
           <Button
             onClick={() => setLanguage(language === 'en' ? 'ar' : 'en')}
             variant="outline"
@@ -231,7 +231,7 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ m3uLinks, onAdminAccess }
         <div className={
           viewMode === 'grid'
             ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4"
-            : "space-y-3"
+            : "flex flex-col gap-3"
         }>
           {filteredChannels.map((channel, index) => (
             <Card
@@ -239,7 +239,7 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ m3uLinks, onAdminAccess }
               className="bg-black/40 backdrop-blur-xl border-purple-500/30 hover:border-purple-400/50 transition-all duration-200 transform hover:scale-105 cursor-pointer"
               onClick={() => handleChannelClick(channel)}
             >
-              <CardContent className={viewMode === 'grid' ? "p-4 text-center" : "p-4 flex items-center space-x-4"}>
+              <CardContent className={viewMode === 'grid' ? "p-4 text-center" : "p-4 flex items-center gap-4"}>
                 {viewMode === 'grid' ? (
                   <>
                     {channel.logo ? (
@@ -294,7 +294,7 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ m3uLinks, onAdminAccess }
       {/* Footer with Admin Access */}
       <footer className="mt-16 border-t border-purple-500/30 pt-8">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center gap-4">
             <div className="w-8 h-8 bg-white rounded flex items-center justify-center p-1">
               <img 
                 src="/lovable-uploads/f5a7e76e-1a14-41df-99e1-340e49412af4.png" 

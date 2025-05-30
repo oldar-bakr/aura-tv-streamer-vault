@@ -1,12 +1,70 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+
+import React, { useState, useEffect } from 'react';
+import AuthScreen from '../components/AuthScreen';
+import Dashboard from '../components/Dashboard';
+import ChannelViewer from '../components/ChannelViewer';
+import { M3ULink } from '../types/M3ULink';
 
 const Index = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentView, setCurrentView] = useState<'dashboard' | 'viewer'>('dashboard');
+  const [m3uLinks, setM3uLinks] = useState<M3ULink[]>([]);
+
+  useEffect(() => {
+    // Load M3U links from localStorage
+    const savedLinks = localStorage.getItem('m3u-links');
+    if (savedLinks) {
+      setM3uLinks(JSON.parse(savedLinks));
+    }
+  }, []);
+
+  const saveLinks = (links: M3ULink[]) => {
+    setM3uLinks(links);
+    localStorage.setItem('m3u-links', JSON.stringify(links));
+  };
+
+  const addM3ULink = (link: Omit<M3ULink, 'id'>) => {
+    const newLink: M3ULink = {
+      ...link,
+      id: Date.now().toString(),
+    };
+    const updatedLinks = [...m3uLinks, newLink];
+    saveLinks(updatedLinks);
+  };
+
+  const updateM3ULink = (id: string, updatedLink: Omit<M3ULink, 'id'>) => {
+    const updatedLinks = m3uLinks.map(link => 
+      link.id === id ? { ...updatedLink, id } : link
+    );
+    saveLinks(updatedLinks);
+  };
+
+  const deleteM3ULink = (id: string) => {
+    const updatedLinks = m3uLinks.filter(link => link.id !== id);
+    saveLinks(updatedLinks);
+  };
+
+  if (!isAuthenticated) {
+    return <AuthScreen onAuthenticated={() => setIsAuthenticated(true)} />;
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
-        <p className="text-xl text-gray-600">Start building your amazing project here!</p>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-violet-900">
+      {currentView === 'dashboard' ? (
+        <Dashboard
+          m3uLinks={m3uLinks}
+          onAddLink={addM3ULink}
+          onUpdateLink={updateM3ULink}
+          onDeleteLink={deleteM3ULink}
+          onViewChannels={() => setCurrentView('viewer')}
+          onLogout={() => setIsAuthenticated(false)}
+        />
+      ) : (
+        <ChannelViewer
+          m3uLinks={m3uLinks}
+          onBackToDashboard={() => setCurrentView('dashboard')}
+        />
+      )}
     </div>
   );
 };

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import AuthScreen from '../components/AuthScreen';
 import Dashboard from '../components/Dashboard';
@@ -7,7 +6,7 @@ import { M3ULink } from '../types/M3ULink';
 
 const Index = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentView, setCurrentView] = useState<'dashboard' | 'viewer'>('dashboard');
+  const [currentView, setCurrentView<'viewer' | 'dashboard'>('viewer');
   const [m3uLinks, setM3uLinks] = useState<M3ULink[]>([]);
 
   useEffect(() => {
@@ -15,6 +14,36 @@ const Index = () => {
     const savedLinks = localStorage.getItem('m3u-links');
     if (savedLinks) {
       setM3uLinks(JSON.parse(savedLinks));
+    } else {
+      // Add some demo links if none exist
+      const demoLinks: M3ULink[] = [
+        {
+          id: '1',
+          name: 'Entertainment Package',
+          url: 'https://demo.com/entertainment.m3u',
+          category: 'Entertainment',
+          description: 'Movies and TV Shows',
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: '2',
+          name: 'Sports Package',
+          url: 'https://demo.com/sports.m3u',
+          category: 'Sports',
+          description: 'Live Sports Channels',
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: '3',
+          name: 'News Package',
+          url: 'https://demo.com/news.m3u',
+          category: 'News',
+          description: 'International News',
+          createdAt: new Date().toISOString()
+        }
+      ];
+      setM3uLinks(demoLinks);
+      localStorage.setItem('m3u-links', JSON.stringify(demoLinks));
     }
   }, []);
 
@@ -44,13 +73,18 @@ const Index = () => {
     saveLinks(updatedLinks);
   };
 
-  if (!isAuthenticated) {
+  const handleAdminAccess = () => {
+    setIsAuthenticated(false);
+    setCurrentView('dashboard');
+  };
+
+  if (!isAuthenticated && currentView === 'dashboard') {
     return <AuthScreen onAuthenticated={() => setIsAuthenticated(true)} />;
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-violet-900">
-      {currentView === 'dashboard' ? (
+      {currentView === 'dashboard' && isAuthenticated ? (
         <Dashboard
           m3uLinks={m3uLinks}
           onAddLink={addM3ULink}
@@ -62,7 +96,7 @@ const Index = () => {
       ) : (
         <ChannelViewer
           m3uLinks={m3uLinks}
-          onBackToDashboard={() => setCurrentView('dashboard')}
+          onAdminAccess={handleAdminAccess}
         />
       )}
     </div>

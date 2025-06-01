@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import AuthScreen from '../components/AuthScreen';
 import Dashboard from '../components/Dashboard';
@@ -15,14 +16,22 @@ const Index = () => {
     if (savedLinks) {
       setM3uLinks(JSON.parse(savedLinks));
     } else {
-      // Add only working Arabic IPTV link as default
+      // Add working M3U links as default
       const demoLinks: M3ULink[] = [
         {
           id: '1',
-          name: 'Arabic IPTV Channels',
-          url: 'https://iptv-org.github.io/iptv/languages/ara.m3u',
-          category: 'Arabic',
-          description: 'Arabic language TV channels from IPTV-ORG',
+          name: 'IPTV-ORG Global',
+          url: 'https://iptv-org.github.io/iptv/index.m3u',
+          category: 'Global',
+          description: 'Global TV channels from IPTV-ORG',
+          createdAt: new Date().toISOString()
+        },
+        {
+          id: '2',
+          name: 'Free-TV Sample',
+          url: 'https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8',
+          category: 'International',
+          description: 'International free TV channels',
           createdAt: new Date().toISOString()
         }
       ];

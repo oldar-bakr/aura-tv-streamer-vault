@@ -15,6 +15,16 @@ export const parseM3U = (content: string): ParsedChannel[] => {
   console.log('Parsing M3U content, total lines:', lines.length);
   console.log('First 10 lines:', lines.slice(0, 10));
   
+  // Check if content is an error message
+  if (content.includes('400: Invalid request') || 
+      content.includes('Invalid URL') || 
+      content.includes('<HTML>') ||
+      content.includes('error') ||
+      lines.length < 2) {
+    console.log('Detected invalid content or error response');
+    throw new Error('Invalid M3U content: The URL returned an error or invalid response');
+  }
+  
   // Handle different M3U formats
   if (content.includes('#EXT-X-VERSION') || content.includes('#EXT-X-TARGETDURATION')) {
     // This is an M3U8 HLS playlist, not a channel list
@@ -48,6 +58,11 @@ export const parseM3U = (content: string): ParsedChannel[] => {
   }
   
   console.log(`Total channels parsed: ${channels.length}`);
+  
+  if (channels.length === 0) {
+    throw new Error('No valid channels found in M3U content');
+  }
+  
   return channels;
 };
 

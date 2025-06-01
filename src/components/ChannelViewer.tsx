@@ -1,26 +1,31 @@
 
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Search, Play, Grid, List, Loader2, Settings, Globe } from 'lucide-react';
-import { M3ULink, Channel } from '../types/M3ULink';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Search, Grid, List, Loader2, Settings, Globe, Heart } from 'lucide-react';
+import { Channel } from '../types/M3ULink';
 import { useToast } from '@/hooks/use-toast';
-import { fetchM3U, ParsedChannel } from '../utils/m3uParser';
+import { fetchM3U } from '../utils/m3uParser';
+import M3UInput from './M3UInput';
+import VideoPlayer from './VideoPlayer';
+import ChannelGrid from './ChannelGrid';
 
 interface ChannelViewerProps {
-  m3uLinks: M3ULink[];
   onAdminAccess: () => void;
 }
 
-const ChannelViewer: React.FC<ChannelViewerProps> = ({ m3uLinks, onAdminAccess }) => {
+const ChannelViewer: React.FC<ChannelViewerProps> = ({ onAdminAccess }) => {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [filteredChannels, setFilteredChannels] = useState<Channel[]>([]);
+  const [favorites, setFavorites] = useState<Channel[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [language, setLanguage] = useState<'en' | 'ar'>('en');
+  const [currentChannel, setCurrentChannel] = useState<Channel | null>(null);
+  const [activeTab, setActiveTab] = useState('all');
   const { toast } = useToast();
 
   const translations = {
@@ -30,19 +35,14 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ m3uLinks, onAdminAccess }
       searchPlaceholder: 'Search channels...',
       channelsLoaded: 'Channels Loaded',
       foundChannels: 'Found',
-      channels: 'channels from',
-      links: 'M3U links',
+      channels: 'channels',
       errorLoading: 'Error Loading Channels',
-      failedParse: 'Failed to parse M3U files',
-      noChannelsFound: 'No Channels Found',
-      adjustFilter: 'Try adjusting your search or category filter',
-      playingChannel: 'Playing Channel',
-      nowPlaying: 'Now playing:',
+      failedParse: 'Failed to parse M3U file',
       adminDashboard: 'Admin Dashboard',
-      manageLinks: 'Manage M3U Links',
       all: 'All',
+      favorites: 'Favorites',
       loading: 'Loading channels...',
-      fetchingFrom: 'Fetching from'
+      addM3U: 'Add M3U'
     },
     ar: {
       title: 'مدير البث التلفزيوني',
@@ -50,67 +50,64 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ m3uLinks, onAdminAccess }
       searchPlaceholder: 'البحث عن القنوات...',
       channelsLoaded: 'تم تحميل القنوات',
       foundChannels: 'تم العثور على',
-      channels: 'قناة من',
-      links: 'روابط M3U',
+      channels: 'قناة',
       errorLoading: 'خطأ في تحميل القنوات',
-      failedParse: 'فشل في تحليل ملفات M3U',
-      noChannelsFound: 'لم يتم العثور على قنوات',
-      adjustFilter: 'جرب تعديل البحث أو تصفية الفئة',
-      playingChannel: 'تشغيل القناة',
-      nowPlaying: 'الآن يتم تشغيل:',
+      failedParse: 'فشل في تحليل ملف M3U',
       adminDashboard: 'لوحة تحكم المشرف',
-      manageLinks: 'إدارة روابط M3U',
       all: 'الكل',
+      favorites: 'المفضلة',
       loading: 'جاري تحميل القنوات...',
-      fetchingFrom: 'جاري التحميل من'
+      addM3U: 'إضافة M3U'
     }
   };
 
   const t = translations[language];
 
   useEffect(() => {
-    loadChannels();
-  }, [m3uLinks]);
+    // Load favorites from localStorage
+    const savedFavorites = localStorage.getItem('channel-favorites');
+    if (savedFavorites) {
+      setFavorites(JSON.parse(savedFavorites));
+    }
+
+    // Load channels from localStorage
+    const savedChannels = localStorage.getItem('parsed-channels');
+    if (savedChannels) {
+      setChannels(JSON.parse(savedChannels));
+    }
+  }, []);
 
   useEffect(() => {
     filterChannels();
-  }, [channels, searchQuery, selectedCategory]);
+  }, [channels, favorites, searchQuery, selectedCategory, activeTab]);
 
-  const loadChannels = async () => {
+  const addM3ULink = async (url: string, name: string) => {
     setLoading(true);
     try {
-      const allChannels: Channel[] = [];
+      console.log(`Loading M3U from: ${url}`);
+      const parsedChannels = await fetchM3U(url);
       
-      for (const link of m3uLinks) {
-        try {
-          console.log(`${t.fetchingFrom} ${link.name}: ${link.url}`);
-          const parsedChannels = await fetchM3U(link.url);
-          
-          // Convert ParsedChannel to Channel
-          const convertedChannels: Channel[] = parsedChannels.map(pc => ({
-            name: pc.name,
-            url: pc.url,
-            logo: pc.logo,
-            group: pc.group || link.category || 'General'
-          }));
-          
-          allChannels.push(...convertedChannels);
-        } catch (error) {
-          console.error(`Error loading M3U from ${link.name}:`, error);
-          // Continue with other links even if one fails
-        }
-      }
+      // Convert ParsedChannel to Channel
+      const convertedChannels: Channel[] = parsedChannels.map(pc => ({
+        name: pc.name,
+        url: pc.url,
+        logo: pc.logo,
+        group: pc.group || 'General'
+      }));
 
-      setChannels(allChannels);
+      const updatedChannels = [...channels, ...convertedChannels];
+      setChannels(updatedChannels);
+      localStorage.setItem('parsed-channels', JSON.stringify(updatedChannels));
+
       toast({
         title: t.channelsLoaded,
-        description: `${t.foundChannels} ${allChannels.length} ${t.channels} ${m3uLinks.length} ${t.links}`,
+        description: `${t.foundChannels} ${parsedChannels.length} ${t.channels}`,
       });
     } catch (error) {
-      console.error('Error loading channels:', error);
+      console.error('Error loading M3U:', error);
       toast({
         title: t.errorLoading,
-        description: t.failedParse,
+        description: error instanceof Error ? error.message : t.failedParse,
         variant: "destructive",
       });
     } finally {
@@ -118,43 +115,42 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ m3uLinks, onAdminAccess }
     }
   };
 
+  const toggleFavorite = (channel: Channel) => {
+    const isFavorite = favorites.some(fav => 
+      fav.name === channel.name && fav.url === channel.url
+    );
+
+    let updatedFavorites;
+    if (isFavorite) {
+      updatedFavorites = favorites.filter(fav => 
+        !(fav.name === channel.name && fav.url === channel.url)
+      );
+    } else {
+      updatedFavorites = [...favorites, channel];
+    }
+
+    setFavorites(updatedFavorites);
+    localStorage.setItem('channel-favorites', JSON.stringify(updatedFavorites));
+  };
+
   const filterChannels = () => {
-    let filtered = channels;
+    let channelsToFilter = activeTab === 'favorites' ? favorites : channels;
 
     if (searchQuery) {
-      filtered = filtered.filter(channel =>
+      channelsToFilter = channelsToFilter.filter(channel =>
         channel.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (channel.group && channel.group.toLowerCase().includes(searchQuery.toLowerCase()))
       );
     }
 
     if (selectedCategory !== 'All') {
-      filtered = filtered.filter(channel => channel.group === selectedCategory);
+      channelsToFilter = channelsToFilter.filter(channel => channel.group === selectedCategory);
     }
 
-    setFilteredChannels(filtered);
+    setFilteredChannels(channelsToFilter);
   };
 
-  const categories = [t.all, ...new Set(channels.map(c => c.group).filter(Boolean))];
-
-  const handleChannelClick = (channel: Channel) => {
-    toast({
-      title: t.playingChannel,
-      description: `${t.nowPlaying} ${channel.name}`,
-    });
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" dir={language === 'ar' ? 'rtl' : 'ltr'}>
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 text-purple-400 animate-spin mx-auto mb-4" />
-          <h2 className="text-xl font-semibold text-white mb-2">{t.loading}</h2>
-          <p className="text-purple-200">Parsing M3U files...</p>
-        </div>
-      </div>
-    );
-  }
+  const categories = ['All', ...new Set(channels.map(c => c.group).filter(Boolean))];
 
   return (
     <div className="min-h-screen p-6" dir={language === 'ar' ? 'rtl' : 'ltr'}>
@@ -192,117 +188,91 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ m3uLinks, onAdminAccess }
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4 mb-8">
-        <div className="relative flex-1">
-          <Search className={`absolute ${language === 'ar' ? 'right-3' : 'left-3'} top-3 w-5 h-5 text-purple-400`} />
-          <Input
-            placeholder={t.searchPlaceholder}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className={`${language === 'ar' ? 'pr-10' : 'pl-10'} bg-black/30 border-purple-500/30 text-white placeholder-purple-300`}
-          />
-        </div>
-        <div className="flex gap-2 overflow-x-auto">
-          {categories.map((category) => (
-            <Button
-              key={category}
-              onClick={() => setSelectedCategory(category)}
-              variant={selectedCategory === category ? "default" : "outline"}
-              className={
-                selectedCategory === category
-                  ? "bg-gradient-to-r from-purple-600 to-violet-600 text-white whitespace-nowrap"
-                  : "border-purple-500/30 text-purple-200 hover:bg-purple-500/20 whitespace-nowrap"
-              }
-            >
-              {category}
-            </Button>
-          ))}
-        </div>
+      {/* M3U Input */}
+      <div className="mb-8">
+        <M3UInput onAddLink={addM3ULink} loading={loading} />
       </div>
 
-      {/* Channels */}
-      {filteredChannels.length === 0 ? (
-        <Card className="bg-black/40 backdrop-blur-xl border-purple-500/30">
-          <CardContent className="p-12 text-center">
-            <Search className="w-16 h-16 text-purple-400 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-white mb-2">{t.noChannelsFound}</h3>
-            <p className="text-purple-200">{t.adjustFilter}</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className={
-          viewMode === 'grid'
-            ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4"
-            : "flex flex-col gap-3"
-        }>
-          {filteredChannels.map((channel, index) => (
-            <Card
-              key={`${channel.name}-${index}`}
-              className="bg-black/40 backdrop-blur-xl border-purple-500/30 hover:border-purple-400/50 transition-all duration-200 transform hover:scale-105 cursor-pointer"
-              onClick={() => handleChannelClick(channel)}
-            >
-              <CardContent className={viewMode === 'grid' ? "p-4 text-center" : "p-4 flex items-center gap-4"}>
-                {viewMode === 'grid' ? (
-                  <>
-                    {channel.logo ? (
-                      <img
-                        src={channel.logo}
-                        alt={channel.name}
-                        className="w-16 h-16 rounded-lg mx-auto mb-3 object-cover"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.style.display = 'none';
-                          target.nextElementSibling?.classList.remove('hidden');
-                        }}
-                      />
-                    ) : null}
-                    <div className={`w-16 h-16 bg-gradient-to-br from-purple-500 to-violet-600 rounded-lg mx-auto mb-3 flex items-center justify-center ${channel.logo ? 'hidden' : ''}`}>
-                      <Play className="w-6 h-6 text-white" />
-                    </div>
-                    <h3 className="font-semibold text-white text-sm truncate">{channel.name}</h3>
-                    {channel.group && (
-                      <p className="text-xs text-purple-300 mt-1">{channel.group}</p>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {channel.logo ? (
-                      <img
-                        src={channel.logo}
-                        alt={channel.name}
-                        className="w-12 h-12 rounded-lg object-cover"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.style.display = 'none';
-                          target.nextElementSibling?.classList.remove('hidden');
-                        }}
-                      />
-                    ) : null}
-                    <div className={`w-12 h-12 bg-gradient-to-br from-purple-500 to-violet-600 rounded-lg flex items-center justify-center ${channel.logo ? 'hidden' : ''}`}>
-                      <Play className="w-5 h-5 text-white" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-white">{channel.name}</h3>
-                      {channel.group && (
-                        <p className="text-sm text-purple-300">{channel.group}</p>
-                      )}
-                    </div>
-                    <Button
-                      size="sm"
-                      className="bg-green-600 hover:bg-green-700 text-white"
-                    >
-                      <Play className="w-4 h-4" />
-                    </Button>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
+        <TabsList className="bg-black/40 border-purple-500/30">
+          <TabsTrigger value="all" className="data-[state=active]:bg-purple-600">
+            {t.all}
+          </TabsTrigger>
+          <TabsTrigger value="favorites" className="data-[state=active]:bg-purple-600">
+            <Heart className="w-4 h-4 mr-2" />
+            {t.favorites} ({favorites.length})
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Footer with Admin Access */}
+        <TabsContent value="all" className="space-y-6">
+          {/* Filters */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className={`absolute ${language === 'ar' ? 'right-3' : 'left-3'} top-3 w-5 h-5 text-purple-400`} />
+              <Input
+                placeholder={t.searchPlaceholder}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className={`${language === 'ar' ? 'pr-10' : 'pl-10'} bg-black/30 border-purple-500/30 text-white placeholder-purple-300`}
+              />
+            </div>
+            <div className="flex gap-2 overflow-x-auto">
+              {categories.map((category) => (
+                <Button
+                  key={category}
+                  onClick={() => setSelectedCategory(category)}
+                  variant={selectedCategory === category ? "default" : "outline"}
+                  className={
+                    selectedCategory === category
+                      ? "bg-gradient-to-r from-purple-600 to-violet-600 text-white whitespace-nowrap"
+                      : "border-purple-500/30 text-purple-200 hover:bg-purple-500/20 whitespace-nowrap"
+                  }
+                >
+                  {category}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <ChannelGrid
+            channels={filteredChannels}
+            viewMode={viewMode}
+            favorites={favorites}
+            onChannelClick={setCurrentChannel}
+            onToggleFavorite={toggleFavorite}
+          />
+        </TabsContent>
+
+        <TabsContent value="favorites" className="space-y-6">
+          {/* Filters for favorites */}
+          <div className="relative">
+            <Search className={`absolute ${language === 'ar' ? 'right-3' : 'left-3'} top-3 w-5 h-5 text-purple-400`} />
+            <Input
+              placeholder={t.searchPlaceholder}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className={`${language === 'ar' ? 'pr-10' : 'pl-10'} bg-black/30 border-purple-500/30 text-white placeholder-purple-300`}
+            />
+          </div>
+
+          <ChannelGrid
+            channels={filteredChannels}
+            viewMode={viewMode}
+            favorites={favorites}
+            onChannelClick={setCurrentChannel}
+            onToggleFavorite={toggleFavorite}
+          />
+        </TabsContent>
+      </Tabs>
+
+      {/* Video Player */}
+      <VideoPlayer
+        channel={currentChannel}
+        onClose={() => setCurrentChannel(null)}
+      />
+
+      {/* Footer */}
       <footer className="mt-16 border-t border-purple-500/30 pt-8">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -323,20 +293,6 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ m3uLinks, onAdminAccess }
             <Settings className="w-4 h-4 mr-2" />
             {t.adminDashboard}
           </Button>
-        </div>
-        <div className="text-center mt-4">
-          <p className="text-purple-300 text-xs mb-2">
-            {language === 'en' 
-              ? 'TV Stream Manager - Access live channels from your M3U links' 
-              : 'مدير البث التلفزيوني - الوصول إلى القنوات المباشرة من روابط M3U الخاصة بك'
-            }
-          </p>
-          <p className="text-purple-400 text-xs">
-            {language === 'en' 
-              ? 'Note: This application provides channel access only. External player required for streaming.' 
-              : 'ملاحظة: هذا التطبيق يوفر الوصول إلى القنوات فقط. مشغل خارجي مطلوب للبث.'
-            }
-          </p>
         </div>
       </footer>
     </div>

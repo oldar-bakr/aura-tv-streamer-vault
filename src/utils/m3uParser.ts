@@ -60,17 +60,47 @@ export const fetchM3U = async (url: string): Promise<ParsedChannel[]> => {
   try {
     console.log('Fetching M3U from URL:', url);
     
-    // Use a CORS proxy for external M3U files
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    // Try multiple CORS proxies in order of preference
+    const corsProxies = [
+      `https://corsproxy.io/?${encodeURIComponent(url)}`,
+      `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+      `https://cors-anywhere.herokuapp.com/${url}`,
+    ];
     
-    const response = await fetch(proxyUrl);
+    let content = '';
+    let lastError = null;
     
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    for (const proxyUrl of corsProxies) {
+      try {
+        console.log('Trying proxy:', proxyUrl);
+        const response = await fetch(proxyUrl);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        // Handle different proxy response formats
+        if (proxyUrl.includes('allorigins.win')) {
+          const data = await response.json();
+          content = data.contents;
+        } else {
+          content = await response.text();
+        }
+        
+        if (content && content.trim()) {
+          console.log('Successfully fetched M3U content');
+          break;
+        }
+      } catch (error) {
+        console.log('Proxy failed:', proxyUrl, error);
+        lastError = error;
+        continue;
+      }
     }
     
-    const data = await response.json();
-    const content = data.contents;
+    if (!content || !content.trim()) {
+      throw lastError || new Error('All CORS proxies failed');
+    }
     
     console.log('M3U content fetched, parsing...');
     const channels = parseM3U(content);

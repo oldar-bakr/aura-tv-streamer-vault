@@ -12,6 +12,16 @@ export const parseM3U = (content: string): ParsedChannel[] => {
   const lines = content.split('\n').map(line => line.trim()).filter(line => line);
   const channels: ParsedChannel[] = [];
   
+  console.log('Parsing M3U content, total lines:', lines.length);
+  console.log('First 10 lines:', lines.slice(0, 10));
+  
+  // Handle different M3U formats
+  if (content.includes('#EXT-X-VERSION') || content.includes('#EXT-X-TARGETDURATION')) {
+    // This is an M3U8 HLS playlist, not a channel list
+    console.log('Detected HLS playlist format, extracting single stream');
+    return parseHLSPlaylist(content, lines);
+  }
+  
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     
@@ -21,17 +31,48 @@ export const parseM3U = (content: string): ParsedChannel[] => {
         const channel = parseExtInf(line, nextLine);
         if (channel) {
           channels.push(channel);
+          console.log('Parsed channel:', channel.name);
         }
         i++; // Skip the URL line as we've processed it
       }
+    } else if (line.startsWith('http') && !line.includes('#EXT')) {
+      // Handle simple URL lists without EXTINF
+      const simpleChannel = {
+        name: `Channel ${channels.length + 1}`,
+        url: line,
+        group: 'General'
+      };
+      channels.push(simpleChannel);
+      console.log('Parsed simple URL channel:', simpleChannel.name);
     }
   }
   
+  console.log(`Total channels parsed: ${channels.length}`);
   return channels;
+};
+
+const parseHLSPlaylist = (content: string, lines: string[]): ParsedChannel[] => {
+  // Extract stream URLs from HLS playlist
+  const streamUrls = lines.filter(line => 
+    line.startsWith('http') && 
+    (line.includes('.m3u8') || line.includes('.ts'))
+  );
+  
+  if (streamUrls.length > 0) {
+    return [{
+      name: 'Live Stream',
+      url: streamUrls[0], // Use the first available stream
+      group: 'Live'
+    }];
+  }
+  
+  return [];
 };
 
 const parseExtInf = (extinfLine: string, urlLine: string): ParsedChannel | null => {
   try {
+    console.log('Parsing EXTINF:', extinfLine);
+    
     // Extract the title (last part after commas)
     const titleMatch = extinfLine.match(/,(.+)$/);
     const name = titleMatch ? titleMatch[1].trim() : 'Unknown Channel';
@@ -42,7 +83,7 @@ const parseExtInf = (extinfLine: string, urlLine: string): ParsedChannel | null 
     const languageMatch = extinfLine.match(/tvg-language="([^"]+)"/);
     const countryMatch = extinfLine.match(/tvg-country="([^"]+)"/);
     
-    return {
+    const channel = {
       name,
       url: urlLine.trim(),
       logo: logoMatch ? logoMatch[1] : undefined,
@@ -50,6 +91,9 @@ const parseExtInf = (extinfLine: string, urlLine: string): ParsedChannel | null 
       language: languageMatch ? languageMatch[1] : undefined,
       country: countryMatch ? countryMatch[1] : undefined,
     };
+    
+    console.log('Successfully parsed channel:', channel);
+    return channel;
   } catch (error) {
     console.error('Error parsing EXTINF line:', error);
     return null;
@@ -89,6 +133,7 @@ export const fetchM3U = async (url: string): Promise<ParsedChannel[]> => {
         
         if (content && content.trim()) {
           console.log('Successfully fetched M3U content');
+          console.log('Content preview:', content.substring(0, 500));
           break;
         }
       } catch (error) {

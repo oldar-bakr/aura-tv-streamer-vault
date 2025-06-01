@@ -115,6 +115,43 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ onAdminAccess }) => {
     }
   };
 
+  const addM3UFile = async (content: string, name: string) => {
+    setLoading(true);
+    try {
+      console.log(`Processing M3U file: ${name}`);
+      
+      // Use the parseM3U function directly since we already have the content
+      const { parseM3U } = await import('../utils/m3uParser');
+      const parsedChannels = parseM3U(content);
+      
+      // Convert ParsedChannel to Channel
+      const convertedChannels: Channel[] = parsedChannels.map(pc => ({
+        name: pc.name,
+        url: pc.url,
+        logo: pc.logo,
+        group: pc.group || 'General'
+      }));
+
+      const updatedChannels = [...channels, ...convertedChannels];
+      setChannels(updatedChannels);
+      localStorage.setItem('parsed-channels', JSON.stringify(updatedChannels));
+
+      toast({
+        title: t.channelsLoaded,
+        description: `${t.foundChannels} ${parsedChannels.length} ${t.channels}`,
+      });
+    } catch (error) {
+      console.error('Error processing M3U file:', error);
+      toast({
+        title: t.errorLoading,
+        description: error instanceof Error ? error.message : t.failedParse,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const toggleFavorite = (channel: Channel) => {
     const isFavorite = favorites.some(fav => 
       fav.name === channel.name && fav.url === channel.url
@@ -190,7 +227,7 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ onAdminAccess }) => {
 
       {/* M3U Input */}
       <div className="mb-8">
-        <M3UInput onAddLink={addM3ULink} loading={loading} />
+        <M3UInput onAddLink={addM3ULink} onAddFile={addM3UFile} loading={loading} />
       </div>
 
       {/* Tabs */}

@@ -2,28 +2,26 @@
 import React, { useState, useEffect } from 'react';
 import AuthScreen from '../components/AuthScreen';
 import Dashboard from '../components/Dashboard';
-import ChannelViewer from '../components/ChannelViewer';
+import TVInterface from '../components/TVInterface';
 
 const Index = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentView, setCurrentView] = useState<'viewer' | 'dashboard'>('viewer');
+  const [currentView, setCurrentView] = useState<'tv' | 'dashboard'>('tv');
 
   useEffect(() => {
     // Check if user should be remembered
-    const rememberedAuth = localStorage.getItem('remember-auth');
-    const expiryDate = localStorage.getItem('remember-auth-expiry');
+    const rememberedAuth = localStorage.getItem('medoil-remember-auth');
+    const expiryDate = localStorage.getItem('medoil-remember-auth-expiry');
     
     if (rememberedAuth === 'true' && expiryDate) {
       const expiry = new Date(expiryDate);
       const now = new Date();
       
       if (now < expiry) {
-        // Still within remember period
         setIsAuthenticated(true);
       } else {
-        // Expired, clear remember data
-        localStorage.removeItem('remember-auth');
-        localStorage.removeItem('remember-auth-expiry');
+        localStorage.removeItem('medoil-remember-auth');
+        localStorage.removeItem('medoil-remember-auth-expiry');
       }
     }
   }, []);
@@ -35,9 +33,8 @@ const Index = () => {
 
   const handleLogout = () => {
     setIsAuthenticated(false);
-    // Clear remember data on explicit logout
-    localStorage.removeItem('remember-auth');
-    localStorage.removeItem('remember-auth-expiry');
+    localStorage.removeItem('medoil-remember-auth');
+    localStorage.removeItem('medoil-remember-auth-expiry');
   };
 
   if (!isAuthenticated && currentView === 'dashboard') {
@@ -45,20 +42,20 @@ const Index = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-violet-900">
+    <>
       {currentView === 'dashboard' && isAuthenticated ? (
         <Dashboard
           m3uLinks={[]}
           onAddLink={() => {}}
           onUpdateLink={() => {}}
           onDeleteLink={() => {}}
-          onViewChannels={() => setCurrentView('viewer')}
+          onViewChannels={() => setCurrentView('tv')}
           onLogout={handleLogout}
         />
       ) : (
-        <ChannelViewer onAdminAccess={handleAdminAccess} />
+        <TVInterface onAdminAccess={handleAdminAccess} />
       )}
-    </div>
+    </>
   );
 };
 

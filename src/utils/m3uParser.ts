@@ -12,10 +12,9 @@ export const parseM3U = (content: string): ParsedChannel[] => {
   const lines = content.split('\n').map(line => line.trim()).filter(line => line);
   const channels: ParsedChannel[] = [];
   
-  console.log('Parsing M3U content, total lines:', lines.length);
-  console.log('First 10 lines:', lines.slice(0, 10));
+  console.log('Parsing M3U content for Medoil IPTV, total lines:', lines.length);
   
-  // Check if content is an error message
+  // Check if content is valid
   if (content.includes('400: Invalid request') || 
       content.includes('Invalid URL') || 
       content.includes('<HTML>') ||
@@ -23,14 +22,11 @@ export const parseM3U = (content: string): ParsedChannel[] => {
       content.includes('<!DOCTYPE') ||
       content.includes('error') ||
       lines.length < 2) {
-    console.log('Detected invalid content or error response');
     throw new Error('Invalid M3U content: The URL returned an error or invalid response');
   }
   
-  // Handle different M3U formats
+  // Handle HLS playlists
   if (content.includes('#EXT-X-VERSION') || content.includes('#EXT-X-TARGETDURATION')) {
-    // This is an M3U8 HLS playlist, not a channel list
-    console.log('Detected HLS playlist format, extracting single stream');
     return parseHLSPlaylist(content, lines);
   }
   
@@ -43,24 +39,21 @@ export const parseM3U = (content: string): ParsedChannel[] => {
         const channel = parseExtInf(line, nextLine);
         if (channel) {
           channels.push(channel);
-          console.log('Parsed channel:', channel.name, 'Category:', channel.group);
         }
-        i++; // Skip the URL line as we've processed it
+        i++; // Skip the URL line
       }
     } else if (line.startsWith('http') && !line.includes('#EXT')) {
-      // Handle simple URL lists without EXTINF
+      // Handle simple URL lists
       const simpleChannel = {
         name: `Channel ${channels.length + 1}`,
         url: line,
         group: 'General'
       };
       channels.push(simpleChannel);
-      console.log('Parsed simple URL channel:', simpleChannel.name);
     }
   }
   
-  console.log(`Total channels parsed: ${channels.length}`);
-  console.log('Categories found:', [...new Set(channels.map(c => c.group).filter(Boolean))]);
+  console.log(`Medoil IPTV: Parsed ${channels.length} channels`);
   
   if (channels.length === 0) {
     throw new Error('No valid channels found in M3U content');
@@ -70,7 +63,6 @@ export const parseM3U = (content: string): ParsedChannel[] => {
 };
 
 const parseHLSPlaylist = (content: string, lines: string[]): ParsedChannel[] => {
-  // Extract stream URLs from HLS playlist
   const streamUrls = lines.filter(line => 
     line.startsWith('http') && 
     (line.includes('.m3u8') || line.includes('.ts'))
@@ -79,7 +71,7 @@ const parseHLSPlaylist = (content: string, lines: string[]): ParsedChannel[] => 
   if (streamUrls.length > 0) {
     return [{
       name: 'Live Stream',
-      url: streamUrls[0], // Use the first available stream
+      url: streamUrls[0],
       group: 'Live'
     }];
   }
@@ -89,29 +81,24 @@ const parseHLSPlaylist = (content: string, lines: string[]): ParsedChannel[] => 
 
 const parseExtInf = (extinfLine: string, urlLine: string): ParsedChannel | null => {
   try {
-    console.log('Parsing EXTINF:', extinfLine);
-    
     // Extract the title (last part after commas)
     const titleMatch = extinfLine.match(/,(.+)$/);
     const name = titleMatch ? titleMatch[1].trim() : 'Unknown Channel';
     
-    // Extract attributes using more flexible regex patterns
+    // Extract attributes
     const logoMatch = extinfLine.match(/tvg-logo="([^"]+)"/i) || extinfLine.match(/logo="([^"]+)"/i);
     const groupMatch = extinfLine.match(/group-title="([^"]+)"/i) || extinfLine.match(/group="([^"]+)"/i);
     const languageMatch = extinfLine.match(/tvg-language="([^"]+)"/i) || extinfLine.match(/language="([^"]+)"/i);
     const countryMatch = extinfLine.match(/tvg-country="([^"]+)"/i) || extinfLine.match(/country="([^"]+)"/i);
     
-    const channel = {
-      name: name.replace(/"/g, '').trim(), // Clean up quotes
+    return {
+      name: name.replace(/"/g, '').trim(),
       url: urlLine.trim(),
       logo: logoMatch ? logoMatch[1] : undefined,
       group: groupMatch ? groupMatch[1] : 'General',
       language: languageMatch ? languageMatch[1] : undefined,
       country: countryMatch ? countryMatch[1] : undefined,
     };
-    
-    console.log('Successfully parsed channel:', channel);
-    return channel;
   } catch (error) {
     console.error('Error parsing EXTINF line:', error);
     return null;
@@ -120,20 +107,15 @@ const parseExtInf = (extinfLine: string, urlLine: string): ParsedChannel | null 
 
 export const fetchM3U = async (url: string): Promise<ParsedChannel[]> => {
   try {
-    console.log('Fetching M3U from URL:', url);
+    console.log('Medoil IPTV: Fetching M3U from URL:', url);
     
     // Validate URL format
-    try {
-      new URL(url);
-    } catch {
-      throw new Error('Invalid URL format');
-    }
+    new URL(url);
     
-    // Try multiple CORS proxies in order of preference
+    // Try multiple CORS proxies
     const corsProxies = [
       `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
       `https://corsproxy.io/?${encodeURIComponent(url)}`,
-      `https://cors-anywhere.herokuapp.com/${url}`,
     ];
     
     let content = '';
@@ -144,7 +126,7 @@ export const fetchM3U = async (url: string): Promise<ParsedChannel[]> => {
         console.log('Trying proxy:', proxyUrl);
         const response = await fetch(proxyUrl, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': 'Medoil-IPTV/1.0'
           }
         });
         
@@ -152,7 +134,6 @@ export const fetchM3U = async (url: string): Promise<ParsedChannel[]> => {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
         
-        // Handle different proxy response formats
         if (proxyUrl.includes('allorigins.win')) {
           const data = await response.json();
           content = data.contents;
@@ -161,8 +142,7 @@ export const fetchM3U = async (url: string): Promise<ParsedChannel[]> => {
         }
         
         if (content && content.trim()) {
-          console.log('Successfully fetched M3U content');
-          console.log('Content preview:', content.substring(0, 500));
+          console.log('Medoil IPTV: Successfully fetched M3U content');
           break;
         }
       } catch (error) {
@@ -176,13 +156,12 @@ export const fetchM3U = async (url: string): Promise<ParsedChannel[]> => {
       throw lastError || new Error('All CORS proxies failed to fetch the M3U content');
     }
     
-    console.log('M3U content fetched, parsing...');
     const channels = parseM3U(content);
-    console.log(`Parsed ${channels.length} channels with categories:`, [...new Set(channels.map(c => c.group))]);
+    console.log(`Medoil IPTV: Successfully parsed ${channels.length} channels`);
     
     return channels;
   } catch (error) {
-    console.error('Error fetching M3U:', error);
+    console.error('Medoil IPTV: Error fetching M3U:', error);
     throw error;
   }
 };

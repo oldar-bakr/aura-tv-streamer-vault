@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Play, Heart, Grid, Settings, Upload, Link, ArrowLeft, ArrowRight, ArrowUp, ArrowDown } from 'lucide-react';
 import { Channel } from '../types/M3ULink';
 import { useToast } from '@/hooks/use-toast';
-import { fetchM3U } from '../utils/m3uParser';
+import { fetchM3U, parseM3U } from '../utils/m3uParser';
 
 interface TVInterfaceProps {
   onAdminAccess: () => void;
@@ -21,6 +21,7 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ onAdminAccess }) => {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [isPlaying, setIsPlaying] = useState(false);
   const [m3uInput, setM3uInput] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const { toast } = useToast();
 
@@ -165,14 +166,66 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ onAdminAccess }) => {
       
       toast({
         title: "Channels Loaded",
-        description: `Added ${convertedChannels.length} channels`,
+        description: `Added ${convertedChannels.length} channels from URL`,
       });
     } catch (error) {
+      console.error('Error loading M3U from URL:', error);
       toast({
         title: "Error",
-        description: "Failed to load M3U playlist",
+        description: "Failed to load M3U playlist from URL",
         variant: "destructive",
       });
+    }
+  };
+
+  const addM3UFile = async () => {
+    if (!selectedFile) return;
+    
+    try {
+      const content = await selectedFile.text();
+      console.log('Processing M3U file:', selectedFile.name);
+      const parsedChannels = parseM3U(content);
+      const convertedChannels: Channel[] = parsedChannels.map(pc => ({
+        name: pc.name,
+        url: pc.url,
+        logo: pc.logo,
+        group: pc.group || 'General'
+      }));
+
+      const updatedChannels = [...channels, ...convertedChannels];
+      setChannels(updatedChannels);
+      updateCategories(updatedChannels);
+      localStorage.setItem('medoil-channels', JSON.stringify(updatedChannels));
+      
+      setSelectedFile(null);
+      setCurrentView('channels');
+      
+      toast({
+        title: "Channels Loaded",
+        description: `Added ${convertedChannels.length} channels from file: ${selectedFile.name}`,
+      });
+    } catch (error) {
+      console.error('Error processing M3U file:', error);
+      toast({
+        title: "Error",
+        description: "Failed to process M3U file",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.name.toLowerCase().endsWith('.m3u') && !file.name.toLowerCase().endsWith('.m3u8')) {
+        toast({
+          title: 'Invalid File Type',
+          description: 'Please select a valid .m3u or .m3u8 file',
+          variant: 'destructive'
+        });
+        return;
+      }
+      setSelectedFile(file);
     }
   };
 
@@ -264,7 +317,10 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ onAdminAccess }) => {
           <Card className="max-w-2xl mx-auto bg-black/40 border-white/20">
             <CardContent className="p-8">
               <h2 className="text-2xl font-bold mb-6 text-center">Add M3U Playlist</h2>
-              <div className="space-y-4">
+              
+              {/* URL Input */}
+              <div className="space-y-4 mb-8">
+                <h3 className="text-lg font-semibold text-center text-blue-200">From URL</h3>
                 <input
                   type="text"
                   value={m3uInput}
@@ -272,24 +328,49 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ onAdminAccess }) => {
                   placeholder="Enter M3U URL..."
                   className="w-full p-4 text-lg bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:border-white/40"
                 />
-                <div className="flex gap-4">
-                  <Button
-                    onClick={addM3ULink}
-                    className="flex-1 bg-green-600 hover:bg-green-700"
-                    size="lg"
-                  >
-                    Add Playlist
-                  </Button>
-                  <Button
-                    onClick={() => setCurrentView('channels')}
-                    variant="outline"
-                    className="border-white/30 text-white hover:bg-white/20"
-                    size="lg"
-                  >
-                    Cancel
-                  </Button>
-                </div>
+                <Button
+                  onClick={addM3ULink}
+                  className="w-full bg-green-600 hover:bg-green-700"
+                  size="lg"
+                >
+                  <Link className="w-5 h-5 mr-2" />
+                  Add from URL
+                </Button>
               </div>
+
+              {/* File Upload */}
+              <div className="space-y-4 mb-8 border-t border-white/20 pt-8">
+                <h3 className="text-lg font-semibold text-center text-blue-200">From File</h3>
+                <input
+                  type="file"
+                  accept=".m3u,.m3u8"
+                  onChange={handleFileChange}
+                  className="w-full p-4 text-lg bg-white/10 border border-white/20 rounded-lg text-white file:bg-blue-600 file:text-white file:border-0 file:rounded file:px-4 file:py-2 file:mr-4"
+                />
+                {selectedFile && (
+                  <p className="text-center text-blue-200">
+                    Selected: {selectedFile.name}
+                  </p>
+                )}
+                <Button
+                  onClick={addM3UFile}
+                  disabled={!selectedFile}
+                  className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600"
+                  size="lg"
+                >
+                  <Upload className="w-5 h-5 mr-2" />
+                  Upload File
+                </Button>
+              </div>
+
+              <Button
+                onClick={() => setCurrentView('channels')}
+                variant="outline"
+                className="w-full border-white/30 text-white hover:bg-white/20"
+                size="lg"
+              >
+                Cancel
+              </Button>
             </CardContent>
           </Card>
         </div>

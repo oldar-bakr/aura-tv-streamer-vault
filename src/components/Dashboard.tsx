@@ -1,307 +1,131 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, Play, Settings, LogOut, Edit, Trash2, Globe } from 'lucide-react';
-import { M3ULink } from '../types/M3ULink';
-import M3ULinkForm from './M3ULinkForm';
-import M3UInput from './M3UInput';
+import { Plus, Play, Settings, LogOut, Edit, Trash2, Globe, Users, TrendingUp, Star } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { fetchM3U } from '../utils/m3uParser';
+import { supabase } from '@/integrations/supabase/client';
+import { User } from '@supabase/supabase-js';
 
 interface DashboardProps {
-  m3uLinks: M3ULink[];
-  onAddLink: (link: Omit<M3ULink, 'id'>) => void;
-  onUpdateLink: (id: string, link: Omit<M3ULink, 'id'>) => void;
-  onDeleteLink: (id: string) => void;
+  user: User;
   onViewChannels: () => void;
-  onLogout: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({
-  m3uLinks,
-  onAddLink,
-  onUpdateLink,
-  onDeleteLink,
-  onViewChannels,
-  onLogout,
-}) => {
-  const [showForm, setShowForm] = useState(false);
-  const [showM3UInput, setShowM3UInput] = useState(false);
-  const [editingLink, setEditingLink] = useState<M3ULink | null>(null);
-  const [language, setLanguage] = useState<'en' | 'ar'>(() => {
-    return (localStorage.getItem('user-language') as 'en' | 'ar') || 'en';
+const Dashboard: React.FC<DashboardProps> = ({ user, onViewChannels }) => {
+  const [stats, setStats] = useState({
+    totalChannels: 0,
+    totalUsers: 0,
+    totalFavorites: 0,
+    totalWatchTime: 0
   });
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  const translations = {
-    en: {
-      title: 'TV Stream Manager',
-      subtitle: 'Manage your M3U streaming links',
-      viewChannels: 'View Channels',
-      logout: 'Logout',
-      totalLinks: 'Total Links',
-      categories: 'Categories',
-      status: 'Status',
-      active: 'Active',
-      m3uLinks: 'M3U Links',
-      addNewLink: 'Add New Link',
-      addM3USource: 'Add M3U Source',
-      noLinksYet: 'No M3U Links Yet',
-      getStarted: 'Get started by adding your first M3U streaming link',
-      addFirstLink: 'Add Your First Link',
-      linkDeleted: 'Link Deleted',
-      linkRemoved: 'has been removed from your collection.',
-      linkUpdated: 'Link Updated',
-      linkUpdatedSuccess: 'has been updated successfully.',
-      linkAdded: 'Link Added',
-      linkAddedSuccess: 'has been added to your collection.',
-      deleteConfirm: 'Delete',
-      deleteAction: 'This action cannot be undone.',
-      general: 'General',
-      noDate: 'No date',
-      channelsLoaded: 'Channels Loaded',
-      foundChannels: 'Found',
-      channels: 'channels',
-      errorLoading: 'Error Loading Channels',
-      failedParse: 'Failed to parse M3U content',
-    },
-    ar: {
-      title: 'مدير البث التلفزيوني',
-      subtitle: 'إدارة روابط البث M3U الخاصة بك',
-      viewChannels: 'عرض القنوات',
-      logout: 'تسجيل الخروج',
-      totalLinks: 'إجمالي الروابط',
-      categories: 'الفئات',
-      status: 'الحالة',
-      active: 'نشط',
-      m3uLinks: 'روابط M3U',
-      addNewLink: 'إضافة رابط جديد',
-      addM3USource: 'إضافة مصدر M3U',
-      noLinksYet: 'لا توجد روابط M3U حتى الآن',
-      getStarted: 'ابدأ بإضافة أول رابط بث M3U الخاص بك',
-      addFirstLink: 'أضف رابطك الأول',
-      linkDeleted: 'تم حذف الرابط',
-      linkRemoved: 'تمت إزالته من مجموعتك.',
-      linkUpdated: 'تم تحديث الرابط',
-      linkUpdatedSuccess: 'تم تحديثه بنجاح.',
-      linkAdded: 'تم إضافة الرابط',
-      linkAddedSuccess: 'تم إضافته إلى مجموعتك.',
-      deleteConfirm: 'حذف',
-      deleteAction: 'لا يمكن التراجع عن هذا الإجراء.',
-      general: 'عام',
-      noDate: 'لا يوجد تاريخ',
-      channelsLoaded: 'تم تحميل القنوات',
-      foundChannels: 'تم العثور على',
-      channels: 'قناة',
-      errorLoading: 'خطأ في تحميل القنوات',
-      failedParse: 'فشل في تحليل محتوى M3U',
-    }
-  };
+  useEffect(() => {
+    loadDashboardStats();
+  }, []);
 
-  const t = translations[language];
-
-  const handleLanguageChange = (newLanguage: 'en' | 'ar') => {
-    setLanguage(newLanguage);
-    localStorage.setItem('user-language', newLanguage);
-  };
-
-  const addM3ULink = async (url: string, name: string) => {
-    setLoading(true);
+  const loadDashboardStats = async () => {
     try {
-      console.log(`Loading M3U from: ${url}`);
-      const parsedChannels = await fetchM3U(url);
-      
-      // Save channels to localStorage for the channel viewer
-      const existingChannels = JSON.parse(localStorage.getItem('parsed-channels') || '[]');
-      const convertedChannels = parsedChannels.map(pc => ({
-        name: pc.name,
-        url: pc.url,
-        logo: pc.logo,
-        group: pc.group || 'General'
-      }));
-      
-      const updatedChannels = [...existingChannels, ...convertedChannels];
-      localStorage.setItem('parsed-channels', JSON.stringify(updatedChannels));
+      // Get total channels
+      const { count: channelsCount } = await supabase
+        .from('channels')
+        .select('*', { count: 'exact', head: true });
 
-      toast({
-        title: t.channelsLoaded,
-        description: `${t.foundChannels} ${parsedChannels.length} ${t.channels}`,
+      // Get total users (profiles)
+      const { count: usersCount } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true });
+
+      // Get total favorites
+      const { count: favoritesCount } = await supabase
+        .from('user_favorites')
+        .select('*', { count: 'exact', head: true });
+
+      // Get watch history count as proxy for watch time
+      const { count: watchHistoryCount } = await supabase
+        .from('watch_history')
+        .select('*', { count: 'exact', head: true });
+
+      setStats({
+        totalChannels: channelsCount || 0,
+        totalUsers: usersCount || 0,
+        totalFavorites: favoritesCount || 0,
+        totalWatchTime: watchHistoryCount || 0
       });
-      
-      setShowM3UInput(false);
     } catch (error) {
-      console.error('Error loading M3U:', error);
-      toast({
-        title: t.errorLoading,
-        description: error instanceof Error ? error.message : t.failedParse,
-        variant: "destructive",
-      });
+      console.error('Error loading dashboard stats:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const addM3UFile = async (content: string, name: string) => {
-    setLoading(true);
-    try {
-      console.log(`Processing M3U file: ${name}`);
-      
-      const { parseM3U } = await import('../utils/m3uParser');
-      const parsedChannels = parseM3U(content);
-      
-      // Save channels to localStorage for the channel viewer
-      const existingChannels = JSON.parse(localStorage.getItem('parsed-channels') || '[]');
-      const convertedChannels = parsedChannels.map(pc => ({
-        name: pc.name,
-        url: pc.url,
-        logo: pc.logo,
-        group: pc.group || 'General'
-      }));
-
-      const updatedChannels = [...existingChannels, ...convertedChannels];
-      localStorage.setItem('parsed-channels', JSON.stringify(updatedChannels));
-
-      toast({
-        title: t.channelsLoaded,
-        description: `${t.foundChannels} ${parsedChannels.length} ${t.channels}`,
-      });
-      
-      setShowM3UInput(false);
-    } catch (error) {
-      console.error('Error processing M3U file:', error);
-      toast({
-        title: t.errorLoading,
-        description: error instanceof Error ? error.message : t.failedParse,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    toast({
+      title: "Logged out successfully",
+      description: "See you soon!",
+    });
   };
 
-  const handleEdit = (link: M3ULink) => {
-    setEditingLink(link);
-    setShowForm(true);
-  };
-
-  const handleDelete = (id: string, name: string) => {
-    if (confirm(`${t.deleteConfirm} "${name}"? ${t.deleteAction}`)) {
-      onDeleteLink(id);
-      toast({
-        title: t.linkDeleted,
-        description: `"${name}" ${t.linkRemoved}`,
-      });
-    }
-  };
-
-  const handleFormSubmit = (linkData: Omit<M3ULink, 'id'>) => {
-    if (editingLink) {
-      onUpdateLink(editingLink.id, linkData);
-      toast({
-        title: t.linkUpdated,
-        description: `"${linkData.name}" ${t.linkUpdatedSuccess}`,
-      });
-    } else {
-      onAddLink(linkData);
-      toast({
-        title: t.linkAdded,
-        description: `"${linkData.name}" ${t.linkAddedSuccess}`,
-      });
-    }
-    setShowForm(false);
-    setEditingLink(null);
-  };
-
-  const handleFormCancel = () => {
-    setShowForm(false);
-    setEditingLink(null);
-  };
-
-  if (showForm) {
+  if (loading) {
     return (
-      <M3ULinkForm
-        link={editingLink}
-        onSubmit={handleFormSubmit}
-        onCancel={handleFormCancel}
-      />
-    );
-  }
-
-  if (showM3UInput) {
-    return (
-      <div className="min-h-screen p-6" dir={language === 'ar' ? 'rtl' : 'ltr'}>
-        <div className="max-w-2xl mx-auto">
-          <div className="flex items-center justify-between mb-8">
-            <h1 className="text-3xl font-bold text-white">{t.addM3USource}</h1>
-            <Button
-              onClick={() => setShowM3UInput(false)}
-              variant="outline"
-              className="border-purple-500/30 text-purple-200 hover:bg-purple-500/20"
-            >
-              Back
-            </Button>
-          </div>
-          <M3UInput onAddLink={addM3ULink} onAddFile={addM3UFile} loading={loading} />
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center">
+        <div className="text-center text-white">
+          <div className="w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <h2 className="text-2xl font-bold">Loading Dashboard...</h2>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen p-6" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 p-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center space-x-4">
           <div className="w-16 h-16 bg-white rounded-lg flex items-center justify-center p-2">
             <img 
-              src="/lovable-uploads/f5a7e76e-1a14-41df-99e1-340e49412af4.png" 
+              src="/lovable-uploads/ad949cec-30d7-4c18-af96-017ab163ef46.png" 
               alt="MEDOIL Logo" 
               className="w-full h-full object-contain"
             />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-white">{t.title}</h1>
-            <p className="text-purple-200">{t.subtitle}</p>
+            <h1 className="text-3xl font-bold text-white">Medoil IPTV Dashboard</h1>
+            <p className="text-purple-200">Welcome back, {user.email}</p>
           </div>
         </div>
         <div className="flex items-center space-x-3">
-          <Button
-            onClick={() => handleLanguageChange(language === 'en' ? 'ar' : 'en')}
-            variant="outline"
-            className="border-purple-500/30 text-purple-200 hover:bg-purple-500/20 px-4 py-3 h-auto"
-          >
-            <Globe className="w-5 h-5 mr-2" />
-            {language === 'en' ? 'العربية' : 'English'}
-          </Button>
           <Button
             onClick={onViewChannels}
             className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 h-auto"
           >
             <Play className="w-5 h-5 mr-2" />
-            {t.viewChannels}
+            Watch TV
           </Button>
           <Button
-            onClick={onLogout}
+            onClick={handleLogout}
             variant="outline"
             className="border-red-500/30 text-red-400 hover:bg-red-500/20 px-6 py-3 h-auto"
           >
             <LogOut className="w-5 h-5 mr-2" />
-            {t.logout}
+            Logout
           </Button>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <Card className="bg-black/40 backdrop-blur-xl border-purple-500/30">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-purple-200 text-sm">{t.totalLinks}</p>
-                <p className="text-3xl font-bold text-white">{m3uLinks.length}</p>
+                <p className="text-purple-200 text-sm">Total Channels</p>
+                <p className="text-3xl font-bold text-white">{stats.totalChannels}</p>
               </div>
-              <Settings className="w-8 h-8 text-purple-400" />
+              <Play className="w-8 h-8 text-green-400" />
             </div>
           </CardContent>
         </Card>
@@ -310,12 +134,10 @@ const Dashboard: React.FC<DashboardProps> = ({
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-purple-200 text-sm">{t.categories}</p>
-                <p className="text-3xl font-bold text-white">
-                  {new Set(m3uLinks.map(link => link.category || t.general)).size}
-                </p>
+                <p className="text-purple-200 text-sm">Active Users</p>
+                <p className="text-3xl font-bold text-white">{stats.totalUsers}</p>
               </div>
-              <Play className="w-8 h-8 text-green-400" />
+              <Users className="w-8 h-8 text-blue-400" />
             </div>
           </CardContent>
         </Card>
@@ -324,118 +146,77 @@ const Dashboard: React.FC<DashboardProps> = ({
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-purple-200 text-sm">{t.status}</p>
-                <p className="text-xl font-bold text-green-400">{t.active}</p>
+                <p className="text-purple-200 text-sm">Total Favorites</p>
+                <p className="text-3xl font-bold text-white">{stats.totalFavorites}</p>
               </div>
-              <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+              <Star className="w-8 h-8 text-yellow-400" />
             </div>
           </CardContent>
         </Card>
-      </div>
 
-      {/* M3U Links Management */}
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-white">{t.m3uLinks}</h2>
-        <div className="flex space-x-3">
-          <Button
-            onClick={() => setShowM3UInput(true)}
-            className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-6 py-3 h-auto"
-          >
-            <Plus className="w-5 h-5 mr-2" />
-            {t.addM3USource}
-          </Button>
-          <Button
-            onClick={() => setShowForm(true)}
-            className="bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white px-6 py-3 h-auto"
-          >
-            <Plus className="w-5 h-5 mr-2" />
-            {t.addNewLink}
-          </Button>
-        </div>
-      </div>
-
-      {/* Links Grid */}
-      {m3uLinks.length === 0 ? (
         <Card className="bg-black/40 backdrop-blur-xl border-purple-500/30">
-          <CardContent className="p-12 text-center">
-            <div className="w-16 h-16 bg-white rounded-lg flex items-center justify-center p-2 mx-auto mb-4">
-              <img 
-                src="/lovable-uploads/f5a7e76e-1a14-41df-99e1-340e49412af4.png" 
-                alt="MEDOIL Logo" 
-                className="w-full h-full object-contain"
-              />
-            </div>
-            <h3 className="text-xl font-semibold text-white mb-2">{t.noLinksYet}</h3>
-            <p className="text-purple-200 mb-6">{t.getStarted}</p>
-            <div className="flex justify-center space-x-4">
-              <Button
-                onClick={() => setShowM3UInput(true)}
-                className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-8 py-3 h-auto"
-              >
-                <Plus className="w-5 h-5 mr-2" />
-                {t.addM3USource}
-              </Button>
-              <Button
-                onClick={() => setShowForm(true)}
-                className="bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white px-8 py-3 h-auto"
-              >
-                <Plus className="w-5 h-5 mr-2" />
-                {t.addFirstLink}
-              </Button>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-purple-200 text-sm">Watch Sessions</p>
+                <p className="text-3xl font-bold text-white">{stats.totalWatchTime}</p>
+              </div>
+              <TrendingUp className="w-8 h-8 text-purple-400" />
             </div>
           </CardContent>
         </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {m3uLinks.map((link) => (
-            <Card key={link.id} className="bg-black/40 backdrop-blur-xl border-purple-500/30 hover:border-purple-400/50 transition-all duration-200 transform hover:scale-105">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-lg text-white truncate">{link.name}</CardTitle>
-                    {link.category && (
-                      <span className="inline-block px-2 py-1 text-xs bg-purple-600/30 text-purple-200 rounded-full mt-2">
-                        {link.category}
-                      </span>
-                    )}
-                  </div>
-                  {link.logo && (
-                    <img src={link.logo} alt={link.name} className="w-12 h-12 rounded-lg object-cover" />
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="pt-0">
-                {link.description && (
-                  <p className="text-purple-200 text-sm mb-4 line-clamp-2">{link.description}</p>
-                )}
-                <div className="flex items-center justify-between">
-                  <div className="flex space-x-2">
-                    <Button
-                      onClick={() => handleEdit(link)}
-                      size="sm"
-                      variant="outline"
-                      className="border-blue-500/30 text-blue-400 hover:bg-blue-500/20"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      onClick={() => handleDelete(link.id, link.name)}
-                      size="sm"
-                      variant="outline"
-                      className="border-red-500/30 text-red-400 hover:bg-red-500/20"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                  <p className="text-xs text-purple-300">
-                    {link.createdAt ? new Date(link.createdAt).toLocaleDateString() : t.noDate}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <Card className="bg-black/40 backdrop-blur-xl border-purple-500/30 hover:border-purple-400/50 transition-all duration-200">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center">
+              <Play className="w-5 h-5 mr-2 text-green-400" />
+              Channel Management
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-purple-200 mb-4">Manage your IPTV channels and playlists</p>
+            <Button
+              onClick={onViewChannels}
+              className="w-full bg-green-600 hover:bg-green-700"
+            >
+              Go to TV Interface
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-black/40 backdrop-blur-xl border-purple-500/30 hover:border-purple-400/50 transition-all duration-200">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center">
+              <Users className="w-5 h-5 mr-2 text-blue-400" />
+              User Analytics
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-purple-200 mb-4">View user engagement and statistics</p>
+            <Button className="w-full bg-blue-600 hover:bg-blue-700">
+              View Analytics
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-black/40 backdrop-blur-xl border-purple-500/30 hover:border-purple-400/50 transition-all duration-200">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center">
+              <Settings className="w-5 h-5 mr-2 text-purple-400" />
+              System Settings
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-purple-200 mb-4">Configure system preferences and settings</p>
+            <Button className="w-full bg-purple-600 hover:bg-purple-700">
+              Open Settings
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Footer */}
       <footer className="mt-16 border-t border-purple-500/30 pt-8">
@@ -443,7 +224,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           <div className="flex items-center justify-center space-x-4 mb-4">
             <div className="w-8 h-8 bg-white rounded flex items-center justify-center p-1">
               <img 
-                src="/lovable-uploads/f5a7e76e-1a14-41df-99e1-340e49412af4.png" 
+                src="/lovable-uploads/ad949cec-30d7-4c18-af96-017ab163ef46.png" 
                 alt="MEDOIL Logo" 
                 className="w-full h-full object-contain"
               />
@@ -451,16 +232,10 @@ const Dashboard: React.FC<DashboardProps> = ({
             <span className="text-purple-200 text-sm">MEDOIL Istanbul - Mediterranean Oil Services</span>
           </div>
           <p className="text-purple-300 text-xs mb-2">
-            {language === 'en' 
-              ? 'Admin Dashboard - Manage M3U streaming links for TV applications' 
-              : 'لوحة تحكم المشرف - إدارة روابط البث M3U لتطبيقات التلفزيون'
-            }
+            Advanced IPTV Management Dashboard - Powered by Supabase
           </p>
           <p className="text-purple-400 text-xs">
-            {language === 'en' 
-              ? 'Note: This application manages streaming links only. No built-in media player included.' 
-              : 'ملاحظة: هذا التطبيق يدير روابط البث فقط. لا يتضمن مشغل وسائط مدمج.'
-            }
+            Professional streaming platform with cloud-based user management and analytics
           </p>
         </div>
       </footer>

@@ -1,43 +1,40 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Play, Heart, Grid, Settings, Upload, Link, ArrowLeft, ArrowRight, ArrowUp, ArrowDown } from 'lucide-react';
+import { Play, Heart, Grid, Settings, Upload, Link, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, User, LogOut, History, Star } from 'lucide-react';
 import { Channel } from '../types/M3ULink';
 import { useToast } from '@/hooks/use-toast';
 import { fetchM3U, parseM3U } from '../utils/m3uParser';
+import { supabase } from '@/integrations/supabase/client';
+import { User as SupabaseUser } from '@supabase/supabase-js';
 
 interface TVInterfaceProps {
+  user: SupabaseUser | null;
   onAdminAccess: () => void;
 }
 
-const TVInterface: React.FC<TVInterfaceProps> = ({ onAdminAccess }) => {
+const TVInterface: React.FC<TVInterfaceProps> = ({ user, onAdminAccess }) => {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [favorites, setFavorites] = useState<Channel[]>([]);
+  const [watchHistory, setWatchHistory] = useState<Channel[]>([]);
   const [currentChannel, setCurrentChannel] = useState<Channel | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [currentView, setCurrentView] = useState<'channels' | 'favorites' | 'input'>('channels');
+  const [currentView, setCurrentView] = useState<'channels' | 'favorites' | 'history' | 'input' | 'profile'>('channels');
   const [categories, setCategories] = useState<string[]>(['All']);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [isPlaying, setIsPlaying] = useState(false);
   const [m3uInput, setM3uInput] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const { toast } = useToast();
 
   useEffect(() => {
-    // Load saved data
-    const savedChannels = localStorage.getItem('medoil-channels');
-    const savedFavorites = localStorage.getItem('medoil-favorites');
-    
-    if (savedChannels) {
-      const parsedChannels = JSON.parse(savedChannels);
-      setChannels(parsedChannels);
-      updateCategories(parsedChannels);
-    }
-    
-    if (savedFavorites) {
-      setFavorites(JSON.parse(savedFavorites));
+    loadChannels();
+    if (user) {
+      loadUserData();
+    } else {
+      loadLocalData();
     }
 
     // Keyboard navigation
@@ -75,7 +72,109 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ onAdminAccess }) => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIndex, currentView, channels, isPlaying]);
+  }, [selectedIndex, currentView, channels, isPlaying, user]);
+
+  const loadChannels = async () => {
+    try {
+      const { data: channelsData } = await supabase
+        .from('channels')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (channelsData && channelsData.length > 0) {
+        const convertedChannels = channelsData.map(ch => ({
+          name: ch.name,
+          url: ch.url,
+          logo: ch.logo,
+          group: ch.group_title || 'General'
+        }));
+        setChannels(convertedChannels);
+        updateCategories(convertedChannels);
+      } else {
+        // Fallback to localStorage if no data in database
+        const savedChannels = localStorage.getItem('medoil-channels');
+        if (savedChannels) {
+          const parsedChannels = JSON.parse(savedChannels);
+          setChannels(parsedChannels);
+          updateCategories(parsedChannels);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading channels:', error);
+      // Fallback to localStorage
+      const savedChannels = localStorage.getItem('medoil-channels');
+      if (savedChannels) {
+        const parsedChannels = JSON.parse(savedChannels);
+        setChannels(parsedChannels);
+        updateCategories(parsedChannels);
+      }
+    }
+  };
+
+  const loadUserData = async () => {
+    if (!user) return;
+
+    try {
+      // Load user profile
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      setUserProfile(profile);
+
+      // Load user favorites
+      const { data: favoritesData } = await supabase
+        .from('user_favorites')
+        .select(`
+          channel_id,
+          channels (name, url, logo, group_title)
+        `)
+        .eq('user_id', user.id);
+
+      if (favoritesData) {
+        const userFavorites = favoritesData.map(fav => ({
+          name: fav.channels.name,
+          url: fav.channels.url,
+          logo: fav.channels.logo,
+          group: fav.channels.group_title || 'General'
+        }));
+        setFavorites(userFavorites);
+      }
+
+      // Load watch history
+      const { data: historyData } = await supabase
+        .from('watch_history')
+        .select(`
+          channel_id,
+          watched_at,
+          channels (name, url, logo, group_title)
+        `)
+        .eq('user_id', user.id)
+        .order('watched_at', { ascending: false })
+        .limit(20);
+
+      if (historyData) {
+        const userHistory = historyData.map(hist => ({
+          name: hist.channels.name,
+          url: hist.channels.url,
+          logo: hist.channels.logo,
+          group: hist.channels.group_title || 'General'
+        }));
+        setWatchHistory(userHistory);
+      }
+    } catch (error) {
+      console.error('Error loading user data:', error);
+    }
+  };
+
+  const loadLocalData = () => {
+    const savedFavorites = localStorage.getItem('medoil-favorites');
+    if (savedFavorites) {
+      setFavorites(JSON.parse(savedFavorites));
+    }
+  };
 
   const updateCategories = (channelList: Channel[]) => {
     const cats = ['All', ...new Set(channelList.map(c => c.group).filter(Boolean))];
@@ -84,6 +183,8 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ onAdminAccess }) => {
 
   const filteredChannels = currentView === 'favorites' 
     ? favorites 
+    : currentView === 'history'
+    ? watchHistory
     : selectedCategory === 'All' 
       ? channels 
       : channels.filter(c => c.group === selectedCategory);
@@ -111,7 +212,7 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ onAdminAccess }) => {
   };
 
   const handleSelect = () => {
-    if (currentView === 'channels' || currentView === 'favorites') {
+    if (currentView === 'channels' || currentView === 'favorites' || currentView === 'history') {
       const channel = filteredChannels[selectedIndex];
       if (channel) {
         playChannel(channel);
@@ -119,7 +220,7 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ onAdminAccess }) => {
     }
   };
 
-  const playChannel = (channel: Channel) => {
+  const playChannel = async (channel: Channel) => {
     setCurrentChannel(channel);
     setIsPlaying(true);
     
@@ -128,20 +229,122 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ onAdminAccess }) => {
       videoRef.current.load();
       videoRef.current.play().catch(console.error);
     }
+
+    // Add to watch history if user is logged in
+    if (user) {
+      try {
+        // First, find or create the channel in database
+        let { data: existingChannel } = await supabase
+          .from('channels')
+          .select('id')
+          .eq('url', channel.url)
+          .single();
+
+        let channelId = existingChannel?.id;
+
+        if (!channelId) {
+          const { data: newChannel } = await supabase
+            .from('channels')
+            .insert({
+              name: channel.name,
+              url: channel.url,
+              logo: channel.logo,
+              group_title: channel.group
+            })
+            .select('id')
+            .single();
+          
+          channelId = newChannel?.id;
+        }
+
+        if (channelId) {
+          await supabase
+            .from('watch_history')
+            .insert({
+              user_id: user.id,
+              channel_id: channelId
+            });
+        }
+      } catch (error) {
+        console.error('Error adding to watch history:', error);
+      }
+    }
   };
 
-  const toggleFavorite = (channel: Channel) => {
-    const isFavorite = favorites.some(fav => fav.name === channel.name && fav.url === channel.url);
-    
-    let updatedFavorites;
-    if (isFavorite) {
-      updatedFavorites = favorites.filter(fav => !(fav.name === channel.name && fav.url === channel.url));
+  const toggleFavorite = async (channel: Channel) => {
+    if (user) {
+      try {
+        // Find or create the channel in database
+        let { data: existingChannel } = await supabase
+          .from('channels')
+          .select('id')
+          .eq('url', channel.url)
+          .single();
+
+        let channelId = existingChannel?.id;
+
+        if (!channelId) {
+          const { data: newChannel } = await supabase
+            .from('channels')
+            .insert({
+              name: channel.name,
+              url: channel.url,
+              logo: channel.logo,
+              group_title: channel.group
+            })
+            .select('id')
+            .single();
+          
+          channelId = newChannel?.id;
+        }
+
+        const isFavorite = favorites.some(fav => fav.url === channel.url);
+
+        if (isFavorite) {
+          await supabase
+            .from('user_favorites')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('channel_id', channelId);
+          
+          setFavorites(favorites.filter(fav => fav.url !== channel.url));
+        } else {
+          await supabase
+            .from('user_favorites')
+            .insert({
+              user_id: user.id,
+              channel_id: channelId
+            });
+          
+          setFavorites([...favorites, channel]);
+        }
+
+        toast({
+          title: isFavorite ? "Removed from Favorites" : "Added to Favorites",
+          description: `${channel.name} ${isFavorite ? 'removed from' : 'added to'} your favorites`,
+        });
+      } catch (error) {
+        console.error('Error toggling favorite:', error);
+        toast({
+          title: "Error",
+          description: "Failed to update favorites",
+          variant: "destructive",
+        });
+      }
     } else {
-      updatedFavorites = [...favorites, channel];
+      // Fallback to localStorage for non-authenticated users
+      const isFavorite = favorites.some(fav => fav.name === channel.name && fav.url === channel.url);
+      
+      let updatedFavorites;
+      if (isFavorite) {
+        updatedFavorites = favorites.filter(fav => !(fav.name === channel.name && fav.url === channel.url));
+      } else {
+        updatedFavorites = [...favorites, channel];
+      }
+      
+      setFavorites(updatedFavorites);
+      localStorage.setItem('medoil-favorites', JSON.stringify(updatedFavorites));
     }
-    
-    setFavorites(updatedFavorites);
-    localStorage.setItem('medoil-favorites', JSON.stringify(updatedFavorites));
   };
 
   const addM3ULink = async () => {
@@ -229,6 +432,10 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ onAdminAccess }) => {
     }
   };
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
   if (isPlaying && currentChannel) {
     return (
       <div className="min-h-screen bg-black flex flex-col">
@@ -252,6 +459,9 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ onAdminAccess }) => {
               <div>
                 <h2 className="text-xl font-bold">{currentChannel.name}</h2>
                 <p className="text-sm text-gray-300">{currentChannel.group}</p>
+                {user && (
+                  <p className="text-xs text-blue-300">Welcome, {userProfile?.username || user.email}</p>
+                )}
               </div>
             </div>
           </div>
@@ -285,11 +495,46 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ onAdminAccess }) => {
           />
           <div>
             <h1 className="text-4xl font-bold">Medoil IPTV</h1>
-            <p className="text-xl text-blue-200">Mediterranean Oil Services</p>
+            <p className="text-xl text-blue-200">
+              {user ? `Welcome back, ${userProfile?.username || user.email?.split('@')[0]}!` : 'Mediterranean Oil Services'}
+            </p>
           </div>
         </div>
         
         <div className="flex items-center gap-4">
+          {user ? (
+            <>
+              <Button
+                onClick={() => setCurrentView('profile')}
+                variant="outline"
+                className="border-white/30 text-white hover:bg-white/20"
+                size="lg"
+              >
+                <User className="w-5 h-5 mr-2" />
+                Profile
+              </Button>
+              <Button
+                onClick={handleLogout}
+                variant="outline"
+                className="border-red-500/30 text-red-400 hover:bg-red-500/20"
+                size="lg"
+              >
+                <LogOut className="w-5 h-5 mr-2" />
+                Logout
+              </Button>
+            </>
+          ) : (
+            <Button
+              onClick={onAdminAccess}
+              variant="outline"
+              className="border-white/30 text-white hover:bg-white/20"
+              size="lg"
+            >
+              <User className="w-5 h-5 mr-2" />
+              Sign In
+            </Button>
+          )}
+          
           <Button
             onClick={() => setCurrentView('input')}
             variant="outline"
@@ -299,6 +544,7 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ onAdminAccess }) => {
             <Link className="w-5 h-5 mr-2" />
             Add M3U
           </Button>
+          
           <Button
             onClick={onAdminAccess}
             variant="outline"
@@ -309,6 +555,59 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ onAdminAccess }) => {
             Admin
           </Button>
         </div>
+      </div>
+
+      {/* Navigation Tabs */}
+      <div className="flex gap-4 mb-8 p-8 pb-0">
+        <Button
+          onClick={() => {
+            setCurrentView('channels');
+            setSelectedIndex(0);
+          }}
+          variant={currentView === 'channels' ? "default" : "outline"}
+          className={currentView === 'channels' 
+            ? "bg-blue-600 hover:bg-blue-700" 
+            : "border-white/30 text-white hover:bg-white/20"
+          }
+          size="lg"
+        >
+          <Grid className="w-5 h-5 mr-2" />
+          Channels ({channels.length})
+        </Button>
+        
+        <Button
+          onClick={() => {
+            setCurrentView('favorites');
+            setSelectedIndex(0);
+          }}
+          variant={currentView === 'favorites' ? "default" : "outline"}
+          className={currentView === 'favorites' 
+            ? "bg-red-600 hover:bg-red-700" 
+            : "border-white/30 text-white hover:bg-white/20"
+          }
+          size="lg"
+        >
+          <Heart className="w-5 h-5 mr-2" />
+          Favorites ({favorites.length})
+        </Button>
+
+        {user && (
+          <Button
+            onClick={() => {
+              setCurrentView('history');
+              setSelectedIndex(0);
+            }}
+            variant={currentView === 'history' ? "default" : "outline"}
+            className={currentView === 'history' 
+              ? "bg-green-600 hover:bg-green-700" 
+              : "border-white/30 text-white hover:bg-white/20"
+            }
+            size="lg"
+          >
+            <History className="w-5 h-5 mr-2" />
+            Recently Watched ({watchHistory.length})
+          </Button>
+        )}
       </div>
 
       {currentView === 'input' ? (
@@ -376,40 +675,6 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ onAdminAccess }) => {
         </div>
       ) : (
         <div className="p-8">
-          {/* Navigation Tabs */}
-          <div className="flex gap-4 mb-8">
-            <Button
-              onClick={() => {
-                setCurrentView('channels');
-                setSelectedIndex(0);
-              }}
-              variant={currentView === 'channels' ? "default" : "outline"}
-              className={currentView === 'channels' 
-                ? "bg-blue-600 hover:bg-blue-700" 
-                : "border-white/30 text-white hover:bg-white/20"
-              }
-              size="lg"
-            >
-              <Grid className="w-5 h-5 mr-2" />
-              Channels ({channels.length})
-            </Button>
-            <Button
-              onClick={() => {
-                setCurrentView('favorites');
-                setSelectedIndex(0);
-              }}
-              variant={currentView === 'favorites' ? "default" : "outline"}
-              className={currentView === 'favorites' 
-                ? "bg-red-600 hover:bg-red-700" 
-                : "border-white/30 text-white hover:bg-white/20"
-              }
-              size="lg"
-            >
-              <Heart className="w-5 h-5 mr-2" />
-              Favorites ({favorites.length})
-            </Button>
-          </div>
-
           {/* Category Filter */}
           {currentView === 'channels' && categories.length > 1 && (
             <div className="flex gap-3 mb-8 overflow-x-auto">

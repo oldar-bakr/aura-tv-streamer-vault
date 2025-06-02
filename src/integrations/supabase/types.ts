@@ -9,7 +9,166 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      channels: {
+        Row: {
+          country: string | null
+          created_at: string
+          group_title: string | null
+          id: string
+          language: string | null
+          logo: string | null
+          name: string
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          country?: string | null
+          created_at?: string
+          group_title?: string | null
+          id?: string
+          language?: string | null
+          logo?: string | null
+          name: string
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          country?: string | null
+          created_at?: string
+          group_title?: string | null
+          id?: string
+          language?: string | null
+          logo?: string | null
+          name?: string
+          updated_at?: string
+          url?: string
+        }
+        Relationships: []
+      }
+      m3u_playlists: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          file_content: string | null
+          id: string
+          is_public: boolean | null
+          name: string
+          updated_at: string
+          url: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          file_content?: string | null
+          id?: string
+          is_public?: boolean | null
+          name: string
+          updated_at?: string
+          url?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          file_content?: string | null
+          id?: string
+          is_public?: boolean | null
+          name?: string
+          updated_at?: string
+          url?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          id: string
+          preferred_language: string | null
+          theme_preference: string | null
+          updated_at: string
+          username: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          id: string
+          preferred_language?: string | null
+          theme_preference?: string | null
+          updated_at?: string
+          username?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          id?: string
+          preferred_language?: string | null
+          theme_preference?: string | null
+          updated_at?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
+      user_favorites: {
+        Row: {
+          channel_id: string
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          channel_id: string
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          channel_id?: string
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_favorites_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      watch_history: {
+        Row: {
+          channel_id: string
+          id: string
+          user_id: string
+          watch_duration: number | null
+          watched_at: string
+        }
+        Insert: {
+          channel_id: string
+          id?: string
+          user_id: string
+          watch_duration?: number | null
+          watched_at?: string
+        }
+        Update: {
+          channel_id?: string
+          id?: string
+          user_id?: string
+          watch_duration?: number | null
+          watched_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "watch_history_channel_id_fkey"
+            columns: ["channel_id"]
+            isOneToOne: false
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

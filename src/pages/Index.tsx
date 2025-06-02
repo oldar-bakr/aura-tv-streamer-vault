@@ -3,57 +3,78 @@ import React, { useState, useEffect } from 'react';
 import AuthScreen from '../components/AuthScreen';
 import Dashboard from '../components/Dashboard';
 import TVInterface from '../components/TVInterface';
+import { supabase } from '@/integrations/supabase/client';
+import { User } from '@supabase/supabase-js';
+import { useToast } from '@/hooks/use-toast';
 
 const Index = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [currentView, setCurrentView] = useState<'tv' | 'dashboard'>('tv');
+  const { toast } = useToast();
 
   useEffect(() => {
-    // Check if user should be remembered
-    const rememberedAuth = localStorage.getItem('medoil-remember-auth');
-    const expiryDate = localStorage.getItem('medoil-remember-auth-expiry');
-    
-    if (rememberedAuth === 'true' && expiryDate) {
-      const expiry = new Date(expiryDate);
-      const now = new Date();
-      
-      if (now < expiry) {
-        setIsAuthenticated(true);
-      } else {
-        localStorage.removeItem('medoil-remember-auth');
-        localStorage.removeItem('medoil-remember-auth-expiry');
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        setUser(session?.user ?? null);
+        
+        if (event === 'SIGNED_IN') {
+          toast({
+            title: "Welcome to Medoil IPTV! 🎉",
+            description: "Enjoy your personalized streaming experience",
+          });
+        }
+        
+        if (event === 'SIGNED_OUT') {
+          toast({
+            title: "See you soon!",
+            description: "You've been signed out successfully",
+          });
+        }
       }
-    }
-  }, []);
+    );
+
+    return () => subscription.unsubscribe();
+  }, [toast]);
 
   const handleAdminAccess = () => {
-    setIsAuthenticated(false);
     setCurrentView('dashboard');
   };
 
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    localStorage.removeItem('medoil-remember-auth');
-    localStorage.removeItem('medoil-remember-auth-expiry');
-  };
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-red-600 flex items-center justify-center">
+        <div className="text-center text-white">
+          <div className="w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <h2 className="text-2xl font-bold">Loading Medoil IPTV...</h2>
+        </div>
+      </div>
+    );
+  }
 
-  if (!isAuthenticated && currentView === 'dashboard') {
-    return <AuthScreen onAuthenticated={() => setIsAuthenticated(true)} />;
+  if (!user && currentView === 'dashboard') {
+    return <AuthScreen onBack={() => setCurrentView('tv')} />;
   }
 
   return (
     <>
-      {currentView === 'dashboard' && isAuthenticated ? (
+      {currentView === 'dashboard' && user ? (
         <Dashboard
-          m3uLinks={[]}
-          onAddLink={() => {}}
-          onUpdateLink={() => {}}
-          onDeleteLink={() => {}}
+          user={user}
           onViewChannels={() => setCurrentView('tv')}
-          onLogout={handleLogout}
         />
       ) : (
-        <TVInterface onAdminAccess={handleAdminAccess} />
+        <TVInterface 
+          user={user} 
+          onAdminAccess={handleAdminAccess} 
+        />
       )}
     </>
   );

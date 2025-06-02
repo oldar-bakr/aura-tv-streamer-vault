@@ -1,8 +1,9 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Lock, Globe } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -12,9 +13,20 @@ interface AuthScreenProps {
 
 const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [language, setLanguage] = useState<'en' | 'ar'>('en');
+  const [language, setLanguage] = useState<'en' | 'ar'>(() => {
+    return (localStorage.getItem('user-language') as 'en' | 'ar') || 'en';
+  });
   const { toast } = useToast();
+
+  useEffect(() => {
+    // Check if user should be remembered
+    const rememberedAuth = localStorage.getItem('remember-auth');
+    if (rememberedAuth === 'true') {
+      onAuthenticated();
+    }
+  }, [onAuthenticated]);
 
   const translations = {
     en: {
@@ -28,6 +40,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
       welcomeMessage: 'Welcome to TV Stream Manager',
       accessDenied: 'Access Denied',
       incorrectPassword: "Incorrect password. Try 'admin123'",
+      rememberMe: 'Remember me for 30 days',
     },
     ar: {
       title: 'مدير البث التلفزيوني',
@@ -40,10 +53,16 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
       welcomeMessage: 'مرحباً بك في مدير البث التلفزيوني',
       accessDenied: 'تم رفض الوصول',
       incorrectPassword: "كلمة مرور خاطئة. جرب 'admin123'",
+      rememberMe: 'تذكرني لمدة 30 يوماً',
     }
   };
 
   const t = translations[language];
+
+  const handleLanguageChange = (newLanguage: 'en' | 'ar') => {
+    setLanguage(newLanguage);
+    localStorage.setItem('user-language', newLanguage);
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,6 +71,14 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
     // Simple password check (in production, use proper authentication)
     setTimeout(() => {
       if (password === 'admin123') {
+        if (rememberMe) {
+          // Remember for 30 days
+          const expiryDate = new Date();
+          expiryDate.setDate(expiryDate.getDate() + 30);
+          localStorage.setItem('remember-auth', 'true');
+          localStorage.setItem('remember-auth-expiry', expiryDate.toISOString());
+        }
+        
         onAuthenticated();
         toast({
           title: t.accessGranted,
@@ -75,7 +102,7 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
       {/* Language Toggle */}
       <div className="absolute top-4 right-4 z-20">
         <Button
-          onClick={() => setLanguage(language === 'en' ? 'ar' : 'en')}
+          onClick={() => handleLanguageChange(language === 'en' ? 'ar' : 'en')}
           variant="outline"
           size="sm"
           className="border-purple-500/30 text-purple-200 hover:bg-purple-500/20"
@@ -110,6 +137,19 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthenticated }) => {
                 required
               />
             </div>
+            
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="remember-me"
+                checked={rememberMe}
+                onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+                className="border-purple-500/30 data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
+              />
+              <label htmlFor="remember-me" className="text-purple-200 text-sm cursor-pointer">
+                {t.rememberMe}
+              </label>
+            </div>
+            
             <Button
               type="submit"
               disabled={isLoading}

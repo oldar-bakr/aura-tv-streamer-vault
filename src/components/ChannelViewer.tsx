@@ -23,7 +23,9 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ onAdminAccess }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [loading, setLoading] = useState(false);
-  const [language, setLanguage] = useState<'en' | 'ar'>('en');
+  const [language, setLanguage] = useState<'en' | 'ar'>(() => {
+    return (localStorage.getItem('user-language') as 'en' | 'ar') || 'en';
+  });
   const [currentChannel, setCurrentChannel] = useState<Channel | null>(null);
   const [activeTab, setActiveTab] = useState('all');
   const { toast } = useToast();
@@ -63,6 +65,11 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ onAdminAccess }) => {
 
   const t = translations[language];
 
+  const handleLanguageChange = (newLanguage: 'en' | 'ar') => {
+    setLanguage(newLanguage);
+    localStorage.setItem('user-language', newLanguage);
+  };
+
   useEffect(() => {
     // Load favorites from localStorage
     const savedFavorites = localStorage.getItem('channel-favorites');
@@ -73,7 +80,10 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ onAdminAccess }) => {
     // Load channels from localStorage
     const savedChannels = localStorage.getItem('parsed-channels');
     if (savedChannels) {
-      setChannels(JSON.parse(savedChannels));
+      const parsedChannels = JSON.parse(savedChannels);
+      console.log('Loaded channels from localStorage:', parsedChannels.length);
+      console.log('Categories found:', [...new Set(parsedChannels.map((c: Channel) => c.group).filter(Boolean))]);
+      setChannels(parsedChannels);
     }
   }, []);
 
@@ -94,6 +104,9 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ onAdminAccess }) => {
         logo: pc.logo,
         group: pc.group || 'General'
       }));
+
+      console.log('Converted channels:', convertedChannels.length);
+      console.log('Categories in converted channels:', [...new Set(convertedChannels.map(c => c.group))]);
 
       const updatedChannels = [...channels, ...convertedChannels];
       setChannels(updatedChannels);
@@ -131,6 +144,9 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ onAdminAccess }) => {
         logo: pc.logo,
         group: pc.group || 'General'
       }));
+
+      console.log('Processed file channels:', convertedChannels.length);
+      console.log('Categories in file channels:', [...new Set(convertedChannels.map(c => c.group))]);
 
       const updatedChannels = [...channels, ...convertedChannels];
       setChannels(updatedChannels);
@@ -184,10 +200,12 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ onAdminAccess }) => {
       channelsToFilter = channelsToFilter.filter(channel => channel.group === selectedCategory);
     }
 
+    console.log('Filtered channels:', channelsToFilter.length, 'Selected category:', selectedCategory);
     setFilteredChannels(channelsToFilter);
   };
 
   const categories = ['All', ...new Set(channels.map(c => c.group).filter(Boolean))];
+  console.log('Available categories:', categories);
 
   return (
     <div className="min-h-screen p-6" dir={language === 'ar' ? 'rtl' : 'ltr'}>
@@ -208,7 +226,7 @@ const ChannelViewer: React.FC<ChannelViewerProps> = ({ onAdminAccess }) => {
         </div>
         <div className="flex items-center gap-3">
           <Button
-            onClick={() => setLanguage(language === 'en' ? 'ar' : 'en')}
+            onClick={() => handleLanguageChange(language === 'en' ? 'ar' : 'en')}
             variant="outline"
             className="border-purple-500/30 text-purple-200 hover:bg-purple-500/20"
           >

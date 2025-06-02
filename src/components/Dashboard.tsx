@@ -4,7 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, Play, Settings, LogOut, Edit, Trash2, Globe } from 'lucide-react';
 import { M3ULink } from '../types/M3ULink';
 import M3ULinkForm from './M3ULinkForm';
+import M3UInput from './M3UInput';
 import { useToast } from '@/hooks/use-toast';
+import { fetchM3U } from '../utils/m3uParser';
 
 interface DashboardProps {
   m3uLinks: M3ULink[];
@@ -24,8 +26,12 @@ const Dashboard: React.FC<DashboardProps> = ({
   onLogout,
 }) => {
   const [showForm, setShowForm] = useState(false);
+  const [showM3UInput, setShowM3UInput] = useState(false);
   const [editingLink, setEditingLink] = useState<M3ULink | null>(null);
-  const [language, setLanguage] = useState<'en' | 'ar'>('en');
+  const [language, setLanguage] = useState<'en' | 'ar'>(() => {
+    return (localStorage.getItem('user-language') as 'en' | 'ar') || 'en';
+  });
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
   const translations = {
@@ -40,6 +46,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       active: 'Active',
       m3uLinks: 'M3U Links',
       addNewLink: 'Add New Link',
+      addM3USource: 'Add M3U Source',
       noLinksYet: 'No M3U Links Yet',
       getStarted: 'Get started by adding your first M3U streaming link',
       addFirstLink: 'Add Your First Link',
@@ -53,6 +60,11 @@ const Dashboard: React.FC<DashboardProps> = ({
       deleteAction: 'This action cannot be undone.',
       general: 'General',
       noDate: 'No date',
+      channelsLoaded: 'Channels Loaded',
+      foundChannels: 'Found',
+      channels: 'channels',
+      errorLoading: 'Error Loading Channels',
+      failedParse: 'Failed to parse M3U content',
     },
     ar: {
       title: 'مدير البث التلفزيوني',
@@ -65,6 +77,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       active: 'نشط',
       m3uLinks: 'روابط M3U',
       addNewLink: 'إضافة رابط جديد',
+      addM3USource: 'إضافة مصدر M3U',
       noLinksYet: 'لا توجد روابط M3U حتى الآن',
       getStarted: 'ابدأ بإضافة أول رابط بث M3U الخاص بك',
       addFirstLink: 'أضف رابطك الأول',
@@ -78,10 +91,94 @@ const Dashboard: React.FC<DashboardProps> = ({
       deleteAction: 'لا يمكن التراجع عن هذا الإجراء.',
       general: 'عام',
       noDate: 'لا يوجد تاريخ',
+      channelsLoaded: 'تم تحميل القنوات',
+      foundChannels: 'تم العثور على',
+      channels: 'قناة',
+      errorLoading: 'خطأ في تحميل القنوات',
+      failedParse: 'فشل في تحليل محتوى M3U',
     }
   };
 
   const t = translations[language];
+
+  const handleLanguageChange = (newLanguage: 'en' | 'ar') => {
+    setLanguage(newLanguage);
+    localStorage.setItem('user-language', newLanguage);
+  };
+
+  const addM3ULink = async (url: string, name: string) => {
+    setLoading(true);
+    try {
+      console.log(`Loading M3U from: ${url}`);
+      const parsedChannels = await fetchM3U(url);
+      
+      // Save channels to localStorage for the channel viewer
+      const existingChannels = JSON.parse(localStorage.getItem('parsed-channels') || '[]');
+      const convertedChannels = parsedChannels.map(pc => ({
+        name: pc.name,
+        url: pc.url,
+        logo: pc.logo,
+        group: pc.group || 'General'
+      }));
+      
+      const updatedChannels = [...existingChannels, ...convertedChannels];
+      localStorage.setItem('parsed-channels', JSON.stringify(updatedChannels));
+
+      toast({
+        title: t.channelsLoaded,
+        description: `${t.foundChannels} ${parsedChannels.length} ${t.channels}`,
+      });
+      
+      setShowM3UInput(false);
+    } catch (error) {
+      console.error('Error loading M3U:', error);
+      toast({
+        title: t.errorLoading,
+        description: error instanceof Error ? error.message : t.failedParse,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const addM3UFile = async (content: string, name: string) => {
+    setLoading(true);
+    try {
+      console.log(`Processing M3U file: ${name}`);
+      
+      const { parseM3U } = await import('../utils/m3uParser');
+      const parsedChannels = parseM3U(content);
+      
+      // Save channels to localStorage for the channel viewer
+      const existingChannels = JSON.parse(localStorage.getItem('parsed-channels') || '[]');
+      const convertedChannels = parsedChannels.map(pc => ({
+        name: pc.name,
+        url: pc.url,
+        logo: pc.logo,
+        group: pc.group || 'General'
+      }));
+
+      const updatedChannels = [...existingChannels, ...convertedChannels];
+      localStorage.setItem('parsed-channels', JSON.stringify(updatedChannels));
+
+      toast({
+        title: t.channelsLoaded,
+        description: `${t.foundChannels} ${parsedChannels.length} ${t.channels}`,
+      });
+      
+      setShowM3UInput(false);
+    } catch (error) {
+      console.error('Error processing M3U file:', error);
+      toast({
+        title: t.errorLoading,
+        description: error instanceof Error ? error.message : t.failedParse,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleEdit = (link: M3ULink) => {
     setEditingLink(link);
@@ -131,6 +228,26 @@ const Dashboard: React.FC<DashboardProps> = ({
     );
   }
 
+  if (showM3UInput) {
+    return (
+      <div className="min-h-screen p-6" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+        <div className="max-w-2xl mx-auto">
+          <div className="flex items-center justify-between mb-8">
+            <h1 className="text-3xl font-bold text-white">{t.addM3USource}</h1>
+            <Button
+              onClick={() => setShowM3UInput(false)}
+              variant="outline"
+              className="border-purple-500/30 text-purple-200 hover:bg-purple-500/20"
+            >
+              Back
+            </Button>
+          </div>
+          <M3UInput onAddLink={addM3ULink} onAddFile={addM3UFile} loading={loading} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen p-6" dir={language === 'ar' ? 'rtl' : 'ltr'}>
       {/* Header */}
@@ -150,7 +267,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         </div>
         <div className="flex items-center space-x-3">
           <Button
-            onClick={() => setLanguage(language === 'en' ? 'ar' : 'en')}
+            onClick={() => handleLanguageChange(language === 'en' ? 'ar' : 'en')}
             variant="outline"
             className="border-purple-500/30 text-purple-200 hover:bg-purple-500/20 px-4 py-3 h-auto"
           >
@@ -159,7 +276,6 @@ const Dashboard: React.FC<DashboardProps> = ({
           </Button>
           <Button
             onClick={onViewChannels}
-            disabled={m3uLinks.length === 0}
             className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 h-auto"
           >
             <Play className="w-5 h-5 mr-2" />
@@ -168,7 +284,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           <Button
             onClick={onLogout}
             variant="outline"
-            className="border-purple-500/30 text-purple-200 hover:bg-purple-500/20 px-6 py-3 h-auto"
+            className="border-red-500/30 text-red-400 hover:bg-red-500/20 px-6 py-3 h-auto"
           >
             <LogOut className="w-5 h-5 mr-2" />
             {t.logout}
@@ -220,13 +336,22 @@ const Dashboard: React.FC<DashboardProps> = ({
       {/* M3U Links Management */}
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-white">{t.m3uLinks}</h2>
-        <Button
-          onClick={() => setShowForm(true)}
-          className="bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white px-6 py-3 h-auto"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          {t.addNewLink}
-        </Button>
+        <div className="flex space-x-3">
+          <Button
+            onClick={() => setShowM3UInput(true)}
+            className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-6 py-3 h-auto"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            {t.addM3USource}
+          </Button>
+          <Button
+            onClick={() => setShowForm(true)}
+            className="bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white px-6 py-3 h-auto"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            {t.addNewLink}
+          </Button>
+        </div>
       </div>
 
       {/* Links Grid */}
@@ -242,13 +367,22 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
             <h3 className="text-xl font-semibold text-white mb-2">{t.noLinksYet}</h3>
             <p className="text-purple-200 mb-6">{t.getStarted}</p>
-            <Button
-              onClick={() => setShowForm(true)}
-              className="bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white px-8 py-3 h-auto"
-            >
-              <Plus className="w-5 h-5 mr-2" />
-              {t.addFirstLink}
-            </Button>
+            <div className="flex justify-center space-x-4">
+              <Button
+                onClick={() => setShowM3UInput(true)}
+                className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-8 py-3 h-auto"
+              >
+                <Plus className="w-5 h-5 mr-2" />
+                {t.addM3USource}
+              </Button>
+              <Button
+                onClick={() => setShowForm(true)}
+                className="bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-700 hover:to-violet-700 text-white px-8 py-3 h-auto"
+              >
+                <Plus className="w-5 h-5 mr-2" />
+                {t.addFirstLink}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -303,7 +437,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         </div>
       )}
 
-      {/* Footer with Admin Dashboard Note */}
+      {/* Footer */}
       <footer className="mt-16 border-t border-purple-500/30 pt-8">
         <div className="text-center">
           <div className="flex items-center justify-center space-x-4 mb-4">

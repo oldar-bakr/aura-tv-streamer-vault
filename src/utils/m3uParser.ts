@@ -19,6 +19,8 @@ export const parseM3U = (content: string): ParsedChannel[] => {
   if (content.includes('400: Invalid request') || 
       content.includes('Invalid URL') || 
       content.includes('<HTML>') ||
+      content.includes('<html>') ||
+      content.includes('<!DOCTYPE') ||
       content.includes('error') ||
       lines.length < 2) {
     console.log('Detected invalid content or error response');
@@ -41,7 +43,7 @@ export const parseM3U = (content: string): ParsedChannel[] => {
         const channel = parseExtInf(line, nextLine);
         if (channel) {
           channels.push(channel);
-          console.log('Parsed channel:', channel.name);
+          console.log('Parsed channel:', channel.name, 'Category:', channel.group);
         }
         i++; // Skip the URL line as we've processed it
       }
@@ -58,6 +60,7 @@ export const parseM3U = (content: string): ParsedChannel[] => {
   }
   
   console.log(`Total channels parsed: ${channels.length}`);
+  console.log('Categories found:', [...new Set(channels.map(c => c.group).filter(Boolean))]);
   
   if (channels.length === 0) {
     throw new Error('No valid channels found in M3U content');
@@ -92,14 +95,14 @@ const parseExtInf = (extinfLine: string, urlLine: string): ParsedChannel | null 
     const titleMatch = extinfLine.match(/,(.+)$/);
     const name = titleMatch ? titleMatch[1].trim() : 'Unknown Channel';
     
-    // Extract attributes using regex
-    const logoMatch = extinfLine.match(/tvg-logo="([^"]+)"/);
-    const groupMatch = extinfLine.match(/group-title="([^"]+)"/);
-    const languageMatch = extinfLine.match(/tvg-language="([^"]+)"/);
-    const countryMatch = extinfLine.match(/tvg-country="([^"]+)"/);
+    // Extract attributes using more flexible regex patterns
+    const logoMatch = extinfLine.match(/tvg-logo="([^"]+)"/i) || extinfLine.match(/logo="([^"]+)"/i);
+    const groupMatch = extinfLine.match(/group-title="([^"]+)"/i) || extinfLine.match(/group="([^"]+)"/i);
+    const languageMatch = extinfLine.match(/tvg-language="([^"]+)"/i) || extinfLine.match(/language="([^"]+)"/i);
+    const countryMatch = extinfLine.match(/tvg-country="([^"]+)"/i) || extinfLine.match(/country="([^"]+)"/i);
     
     const channel = {
-      name,
+      name: name.replace(/"/g, '').trim(), // Clean up quotes
       url: urlLine.trim(),
       logo: logoMatch ? logoMatch[1] : undefined,
       group: groupMatch ? groupMatch[1] : 'General',
@@ -119,10 +122,17 @@ export const fetchM3U = async (url: string): Promise<ParsedChannel[]> => {
   try {
     console.log('Fetching M3U from URL:', url);
     
+    // Validate URL format
+    try {
+      new URL(url);
+    } catch {
+      throw new Error('Invalid URL format');
+    }
+    
     // Try multiple CORS proxies in order of preference
     const corsProxies = [
-      `https://corsproxy.io/?${encodeURIComponent(url)}`,
       `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+      `https://corsproxy.io/?${encodeURIComponent(url)}`,
       `https://cors-anywhere.herokuapp.com/${url}`,
     ];
     
@@ -132,7 +142,11 @@ export const fetchM3U = async (url: string): Promise<ParsedChannel[]> => {
     for (const proxyUrl of corsProxies) {
       try {
         console.log('Trying proxy:', proxyUrl);
-        const response = await fetch(proxyUrl);
+        const response = await fetch(proxyUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }
+        });
         
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
@@ -159,12 +173,12 @@ export const fetchM3U = async (url: string): Promise<ParsedChannel[]> => {
     }
     
     if (!content || !content.trim()) {
-      throw lastError || new Error('All CORS proxies failed');
+      throw lastError || new Error('All CORS proxies failed to fetch the M3U content');
     }
     
     console.log('M3U content fetched, parsing...');
     const channels = parseM3U(content);
-    console.log(`Parsed ${channels.length} channels`);
+    console.log(`Parsed ${channels.length} channels with categories:`, [...new Set(channels.map(c => c.group))]);
     
     return channels;
   } catch (error) {

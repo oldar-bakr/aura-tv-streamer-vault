@@ -26,6 +26,7 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ user, onAdminAccess }) => {
   const [m3uInput, setM3uInput] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const { toast } = useToast();
 
@@ -350,8 +351,11 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ user, onAdminAccess }) => {
   const addM3ULink = async () => {
     if (!m3uInput.trim()) return;
     
+    setLoading(true);
     try {
       const parsedChannels = await fetchM3U(m3uInput);
+      console.log(`Fetched ${parsedChannels.length} channels from URL`);
+      
       const convertedChannels: Channel[] = parsedChannels.map(pc => ({
         name: pc.name,
         url: pc.url,
@@ -359,17 +363,37 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ user, onAdminAccess }) => {
         group: pc.group || 'General'
       }));
 
-      const updatedChannels = [...channels, ...convertedChannels];
-      setChannels(updatedChannels);
-      updateCategories(updatedChannels);
-      localStorage.setItem('medoil-channels', JSON.stringify(updatedChannels));
+      // Insert all channels into Supabase
+      const channelsToInsert = convertedChannels.map(channel => ({
+        name: channel.name,
+        url: channel.url,
+        logo: channel.logo,
+        group_title: channel.group
+      }));
+
+      console.log(`Inserting ${channelsToInsert.length} channels into database`);
+      
+      const { data: insertedChannels, error } = await supabase
+        .from('channels')
+        .insert(channelsToInsert)
+        .select();
+
+      if (error) {
+        console.error('Error inserting channels:', error);
+        throw error;
+      }
+
+      console.log(`Successfully inserted ${insertedChannels?.length || 0} channels`);
+
+      // Reload channels from database
+      await loadChannels();
       
       setM3uInput('');
       setCurrentView('channels');
       
       toast({
-        title: "Channels Loaded",
-        description: `Added ${convertedChannels.length} channels from URL`,
+        title: "Channels Loaded Successfully!",
+        description: `Added ${convertedChannels.length} channels from URL to database`,
       });
     } catch (error) {
       console.error('Error loading M3U from URL:', error);
@@ -378,16 +402,21 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ user, onAdminAccess }) => {
         description: "Failed to load M3U playlist from URL",
         variant: "destructive",
       });
+    } finally {
+      setLoading(false);
     }
   };
 
   const addM3UFile = async () => {
     if (!selectedFile) return;
     
+    setLoading(true);
     try {
       const content = await selectedFile.text();
       console.log('Processing M3U file:', selectedFile.name);
       const parsedChannels = parseM3U(content);
+      console.log(`Parsed ${parsedChannels.length} channels from file`);
+      
       const convertedChannels: Channel[] = parsedChannels.map(pc => ({
         name: pc.name,
         url: pc.url,
@@ -395,16 +424,36 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ user, onAdminAccess }) => {
         group: pc.group || 'General'
       }));
 
-      const updatedChannels = [...channels, ...convertedChannels];
-      setChannels(updatedChannels);
-      updateCategories(updatedChannels);
-      localStorage.setItem('medoil-channels', JSON.stringify(updatedChannels));
+      // Insert all channels into Supabase
+      const channelsToInsert = convertedChannels.map(channel => ({
+        name: channel.name,
+        url: channel.url,
+        logo: channel.logo,
+        group_title: channel.group
+      }));
+
+      console.log(`Inserting ${channelsToInsert.length} channels into database`);
+      
+      const { data: insertedChannels, error } = await supabase
+        .from('channels')
+        .insert(channelsToInsert)
+        .select();
+
+      if (error) {
+        console.error('Error inserting channels:', error);
+        throw error;
+      }
+
+      console.log(`Successfully inserted ${insertedChannels?.length || 0} channels`);
+
+      // Reload channels from database
+      await loadChannels();
       
       setSelectedFile(null);
       setCurrentView('channels');
       
       toast({
-        title: "Channels Loaded",
+        title: "Channels Loaded Successfully!",
         description: `Added ${convertedChannels.length} channels from file: ${selectedFile.name}`,
       });
     } catch (error) {
@@ -414,6 +463,8 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ user, onAdminAccess }) => {
         description: "Failed to process M3U file",
         variant: "destructive",
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -626,14 +677,25 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ user, onAdminAccess }) => {
                   onChange={(e) => setM3uInput(e.target.value)}
                   placeholder="Enter M3U URL..."
                   className="w-full p-4 text-lg bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/60 focus:outline-none focus:border-white/40"
+                  disabled={loading}
                 />
                 <Button
                   onClick={addM3ULink}
                   className="w-full bg-green-600 hover:bg-green-700"
                   size="lg"
+                  disabled={loading}
                 >
-                  <Link className="w-5 h-5 mr-2" />
-                  Add from URL
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                      Loading...
+                    </>
+                  ) : (
+                    <>
+                      <Link className="w-5 h-5 mr-2" />
+                      Add from URL
+                    </>
+                  )}
                 </Button>
               </div>
 
@@ -645,6 +707,7 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ user, onAdminAccess }) => {
                   accept=".m3u,.m3u8"
                   onChange={handleFileChange}
                   className="w-full p-4 text-lg bg-white/10 border border-white/20 rounded-lg text-white file:bg-blue-600 file:text-white file:border-0 file:rounded file:px-4 file:py-2 file:mr-4"
+                  disabled={loading}
                 />
                 {selectedFile && (
                   <p className="text-center text-blue-200">
@@ -653,12 +716,21 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ user, onAdminAccess }) => {
                 )}
                 <Button
                   onClick={addM3UFile}
-                  disabled={!selectedFile}
+                  disabled={!selectedFile || loading}
                   className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600"
                   size="lg"
                 >
-                  <Upload className="w-5 h-5 mr-2" />
-                  Upload File
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-5 h-5 mr-2" />
+                      Upload File
+                    </>
+                  )}
                 </Button>
               </div>
 
@@ -667,6 +739,7 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ user, onAdminAccess }) => {
                 variant="outline"
                 className="w-full border-white/30 text-white hover:bg-white/20"
                 size="lg"
+                disabled={loading}
               >
                 Cancel
               </Button>

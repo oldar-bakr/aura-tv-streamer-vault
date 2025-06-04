@@ -348,6 +348,54 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ user, onAdminAccess }) => {
     }
   };
 
+  const insertChannelsToDatabase = async (channels: Channel[]) => {
+    console.log(`Attempting to insert ${channels.length} channels into database`);
+    
+    let successCount = 0;
+    let skipCount = 0;
+    
+    for (const channel of channels) {
+      try {
+        // Check if channel already exists
+        const { data: existingChannel } = await supabase
+          .from('channels')
+          .select('id')
+          .eq('url', channel.url)
+          .single();
+
+        if (existingChannel) {
+          console.log(`Channel already exists: ${channel.name}`);
+          skipCount++;
+          continue;
+        }
+
+        // Insert new channel
+        const { data: insertedChannel, error } = await supabase
+          .from('channels')
+          .insert({
+            name: channel.name,
+            url: channel.url,
+            logo: channel.logo,
+            group_title: channel.group
+          })
+          .select()
+          .single();
+
+        if (error) {
+          console.error(`Error inserting channel ${channel.name}:`, error);
+        } else {
+          console.log(`Successfully inserted channel: ${channel.name}`);
+          successCount++;
+        }
+      } catch (error) {
+        console.error(`Error processing channel ${channel.name}:`, error);
+      }
+    }
+
+    console.log(`Insert completed: ${successCount} new channels, ${skipCount} duplicates skipped`);
+    return { successCount, skipCount };
+  };
+
   const addM3ULink = async () => {
     if (!m3uInput.trim()) return;
     
@@ -363,27 +411,8 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ user, onAdminAccess }) => {
         group: pc.group || 'General'
       }));
 
-      // Insert all channels into Supabase
-      const channelsToInsert = convertedChannels.map(channel => ({
-        name: channel.name,
-        url: channel.url,
-        logo: channel.logo,
-        group_title: channel.group
-      }));
-
-      console.log(`Inserting ${channelsToInsert.length} channels into database`);
-      
-      const { data: insertedChannels, error } = await supabase
-        .from('channels')
-        .insert(channelsToInsert)
-        .select();
-
-      if (error) {
-        console.error('Error inserting channels:', error);
-        throw error;
-      }
-
-      console.log(`Successfully inserted ${insertedChannels?.length || 0} channels`);
+      // Insert channels one by one to handle duplicates
+      const { successCount, skipCount } = await insertChannelsToDatabase(convertedChannels);
 
       // Reload channels from database
       await loadChannels();
@@ -393,7 +422,7 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ user, onAdminAccess }) => {
       
       toast({
         title: "Channels Loaded Successfully!",
-        description: `Added ${convertedChannels.length} channels from URL to database`,
+        description: `Added ${successCount} new channels, ${skipCount} duplicates skipped`,
       });
     } catch (error) {
       console.error('Error loading M3U from URL:', error);
@@ -424,27 +453,8 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ user, onAdminAccess }) => {
         group: pc.group || 'General'
       }));
 
-      // Insert all channels into Supabase
-      const channelsToInsert = convertedChannels.map(channel => ({
-        name: channel.name,
-        url: channel.url,
-        logo: channel.logo,
-        group_title: channel.group
-      }));
-
-      console.log(`Inserting ${channelsToInsert.length} channels into database`);
-      
-      const { data: insertedChannels, error } = await supabase
-        .from('channels')
-        .insert(channelsToInsert)
-        .select();
-
-      if (error) {
-        console.error('Error inserting channels:', error);
-        throw error;
-      }
-
-      console.log(`Successfully inserted ${insertedChannels?.length || 0} channels`);
+      // Insert channels one by one to handle duplicates
+      const { successCount, skipCount } = await insertChannelsToDatabase(convertedChannels);
 
       // Reload channels from database
       await loadChannels();
@@ -454,7 +464,7 @@ const TVInterface: React.FC<TVInterfaceProps> = ({ user, onAdminAccess }) => {
       
       toast({
         title: "Channels Loaded Successfully!",
-        description: `Added ${convertedChannels.length} channels from file: ${selectedFile.name}`,
+        description: `Added ${successCount} new channels from ${selectedFile.name}, ${skipCount} duplicates skipped`,
       });
     } catch (error) {
       console.error('Error processing M3U file:', error);
